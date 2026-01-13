@@ -61,6 +61,9 @@ export default function MePage() {
           </p>
 
           <h2>Agencies</h2>
+          <pre style={{ background: "#111", color: "#0f0", padding: 12, overflow: "auto" }}>
+  {JSON.stringify(memberships, null, 2)}
+</pre>        
           {memberships.length === 0 ? (
             <p>No memberships found.</p>
           ) : (
