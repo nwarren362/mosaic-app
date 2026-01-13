@@ -63,7 +63,7 @@ export default function InvitationsPage() {
       return;
     }
 
-    const typed = (ms ?? []) as Membership[];
+    const typed = (ms ?? []) as unknown as Membership[];
     setMemberships(typed);
 
     // Default to first agency
