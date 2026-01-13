@@ -37,7 +37,7 @@ export default function MePage() {
 
       if (error) return setError(error.message);
 
-      ssetMemberships((data ?? []) as unknown as MembershipRow[]);
+      setMemberships((data ?? []) as unknown as MembershipRow[]);
     }
 
     load();
