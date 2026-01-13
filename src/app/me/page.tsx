@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 type MembershipRow = {
   agency_id: string;
   role: string;
-  agencies: { id: string; name: string }[] | null;
+  agencies: { id: string; name: string } | null;
 };
 
 export default function MePage() {
@@ -61,16 +61,13 @@ export default function MePage() {
           </p>
 
           <h2>Agencies</h2>
-          <pre style={{ background: "#111", color: "#0f0", padding: 12, overflow: "auto" }}>
-  {JSON.stringify(memberships, null, 2)}
-</pre>        
           {memberships.length === 0 ? (
             <p>No memberships found.</p>
           ) : (
             <ul>
               {memberships.map((m) => (
                 <li key={m.agency_id}>
-                  <strong>{m.agencies?.[0]?.name ?? m.agency_id}</strong> — role:{" "}
+                  <strong>{m.agencies?.name ?? m.agency_id}</strong> — role:{" "}
                   {m.role}
                 </li>
               ))}
