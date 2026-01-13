@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 type MembershipRow = {
   agency_id: string;
   role: string;
-  agencies?: { id: string; name: string } | null;
+  agencies: { id: string; name: string }[] | null;
 };
 
 export default function MePage() {
@@ -37,7 +37,7 @@ export default function MePage() {
 
       if (error) return setError(error.message);
 
-      setMemberships((data ?? []) as MembershipRow[]);
+      ssetMemberships((data ?? []) as unknown as MembershipRow[]);
     }
 
     load();
@@ -67,7 +67,7 @@ export default function MePage() {
             <ul>
               {memberships.map((m) => (
                 <li key={m.agency_id}>
-                  <strong>{m.agencies?.name ?? m.agency_id}</strong> — role:{" "}
+                  <strong>{m.agencies?.[0]?.name ?? m.agency_id}</strong> — role:{" "}
                   {m.role}
                 </li>
               ))}
