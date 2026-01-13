@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function AcceptInvitePage() {
+function AcceptInviteInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
@@ -26,14 +26,13 @@ export default function AcceptInvitePage() {
 
       if (!user) {
         setStatus("Please log in first, then return to this link.");
-        // send them to login; they can come back to the same link after login
-        router.push(`/login`);
+        router.push("/login");
         return;
       }
 
       setStatus("Accepting invitation...");
 
-      const { data, error } = await supabase.rpc("accept_agency_invitation", { p_token: token });
+      const { error } = await supabase.rpc("accept_agency_invitation", { p_token: token });
 
       if (error) {
         setError(error.message);
@@ -42,7 +41,6 @@ export default function AcceptInvitePage() {
       }
 
       setStatus("Success! You’ve joined the agency.");
-      // Take them to /me
       router.push("/me");
     }
 
@@ -55,5 +53,13 @@ export default function AcceptInvitePage() {
       <p>{status}</p>
       {error && <p style={{ color: "crimson" }}>{error}</p>}
     </main>
+  );
+}
+
+export default function AcceptInvitePage() {
+  return (
+    <Suspense fallback={<main style={{ padding: 24 }}>Loading…</main>}>
+      <AcceptInviteInner />
+    </Suspense>
   );
 }
