@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mosaic
 
-## Getting Started
+Mosaic is a multi-tenant, invitation-only SaaS platform built for music agencies and their artists.
 
-First, run the development server:
+It is designed around:
+- agency-based tenancy
+- role-based access (agent / admin)
+- secure invitation-only onboarding
+- database-enforced security via Row Level Security (RLS)
+
+The initial target audience is digitally savvy musicians and music-industry professionals
+(e.g. rock/metal agencies such as Mosaic Music).
+
+---
+
+## Tech stack
+
+- **Next.js (App Router)** — frontend
+- **Supabase** — Postgres, Auth, Row Level Security
+- **Vercel** — hosting and CI/CD
+
+---
+
+## Getting started (local development)
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Create a .env.local file with:
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+Then open:
+	•	http://localhost:3000/login
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+⸻
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Documentation
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The main project documentation lives in the /docs￼ folder:
+	•	Architecture overview → docs/ARCHITECTURE.md￼
+	•	Database & RLS → docs/DATABASE.md￼
+	•	Runbook (how to run, deploy, debug) → docs/RUNBOOK.md￼
 
-## Learn More
+If you are new to the codebase, start with ARCHITECTURE.md.
 
-To learn more about Next.js, take a look at the following resources:
+⸻
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Project status
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+This is an actively developed hobby project with production-grade foundations.
 
-## Deploy on Vercel
+Core flows implemented so far:
+	•	authentication
+	•	agency membership
+	•	admin invitations
+	•	secure invite acceptance
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Planned work is tracked in TODO.md￼.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+⸻
+
+Notes
+
+This project was originally bootstrapped using create-next-app.
+
+The default Next.js boilerplate README has been intentionally replaced with
+project-specific guidance.
