@@ -4,40 +4,51 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
-export default function LoginPage() {
+export default function SignupPage() {
   const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
-  async function onLogin(e: React.FormEvent) {
+  async function onSignup(e: React.FormEvent) {
     e.preventDefault();
-    setMsg(null);
+    setMessage(null);
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
 
     setLoading(false);
 
     if (error) {
-      setMsg(error.message);
+      setMessage(error.message);
       return;
     }
 
+    setMessage("Account created. You are now signed in.");
     router.push("/me");
   }
 
   return (
     <main style={{ padding: 24, maxWidth: 480 }}>
-      <h1>Login</h1>
+      <h1>Sign up</h1>
 
-      <form onSubmit={onLogin} style={{ display: "grid", gap: 12 }}>
+      <p style={{ marginBottom: 16 }}>
+        You must have been invited to join an agency.
+      </p>
+
+      <form onSubmit={onSignup} style={{ display: "grid", gap: 12 }}>
         <label>
           Email
           <input
+            type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            required
             style={{ width: "100%", padding: 8 }}
             autoComplete="email"
           />
@@ -49,20 +60,23 @@ export default function LoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={6}
             style={{ width: "100%", padding: 8 }}
-            autoComplete="current-password"
+            autoComplete="new-password"
           />
         </label>
 
-        <button disabled={loading} type="submit" style={{ padding: 10 }}>
-          {loading ? "Logging in..." : "Login"}
+        <button type="submit" disabled={loading} style={{ padding: 10 }}>
+          {loading ? "Creating account..." : "Create account"}
         </button>
 
-        {msg && <p style={{ color: "crimson" }}>{msg}</p>}
+        {message && <p>{message}</p>}
       </form>
+
       <p style={{ marginTop: 16 }}>
-  Don’t have an account? <a href="/signup">Sign up</a>
-</p>
+        Already have an account? <a href="/login">Log in</a>
+      </p>
     </main>
   );
 }
