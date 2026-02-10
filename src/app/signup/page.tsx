@@ -17,7 +17,7 @@ export default function SignupPage() {
     setMessage(null);
     setLoading(true);
 
-    const { error } = await supabase.auth.signUp({
+     const { data, error } = await supabase.auth.signUp({
       email,
       password,
     });
@@ -26,6 +26,13 @@ export default function SignupPage() {
 
     if (error) {
       setMessage(error.message);
+      return;
+    }
+
+    // If email confirmations are enabled, Supabase may not create a session yet.
+    if (!data.session) {
+      setMessage("Account created. Please check your email to confirm, then log in.");
+      router.push("/login");
       return;
     }
 
