@@ -25,7 +25,9 @@ function AcceptInviteInner() {
       const user = sessionData.session?.user;
 
       if (!user) {
-        setStatus("Please log in first, then return to this link.");
+        // Store token so login can resume invite acceptance automatically
+        localStorage.setItem("pending_invite_token", token);
+        setStatus("Please log in to accept the invite…");
         router.push("/login");
         return;
       }

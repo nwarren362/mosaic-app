@@ -88,7 +88,23 @@ export default function InvitationsPage() {
 
     setInvites((data ?? []) as InvitationRow[]);
   }
+  async function deleteInvite(inviteId: string) {
+    setMessage(null);
+    setAcceptLink(null);
 
+    const { error } = await supabase
+      .from("agency_invitations")
+      .delete()
+      .eq("id", inviteId);
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setMessage("Invite deleted.");
+    await loadInvites(agencyId);
+  }
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,7 +170,65 @@ export default function InvitationsPage() {
       setLoading(false);
     }
   }
+  async function regenerateInvite(invite: InvitationRow) {
+    setMessage(null);
+    setAcceptLink(null);
 
+    if (!agencyId) {
+      setMessage("No agency selected.");
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData.session?.user;
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    // Delete old invite first (only if still pending)
+    if (!invite.accepted_at) {
+      const { error: delErr } = await supabase
+        .from("agency_invitations")
+        .delete()
+        .eq("id", invite.id);
+
+      if (delErr) {
+        setMessage(delErr.message);
+        return;
+      }
+    }
+
+    // Create a fresh invite with same email + role
+    try {
+      const token = randomToken();
+
+      const { data: tokenHash, error: hashErr } = await supabase.rpc("invite_token_hash", {
+        p_token: token,
+      });
+      if (hashErr) throw new Error(hashErr.message);
+
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      const { error: insErr } = await supabase.from("agency_invitations").insert({
+        agency_id: agencyId,
+        email: invite.email,
+        role: invite.role,
+        token_hash: tokenHash,
+        invited_by: user.id,
+        expires_at: expiresAt,
+      });
+      if (insErr) throw new Error(insErr.message);
+
+      const link = `${window.location.origin}/accept-invite?token=${encodeURIComponent(token)}`;
+      setAcceptLink(link);
+      setMessage(`New invite link generated for ${invite.email}.`);
+
+      await loadInvites(agencyId);
+    } catch (e: any) {
+      setMessage(e?.message ?? "Failed to regenerate invite.");
+    }
+  }
   async function onLogout() {
     await supabase.auth.signOut();
     router.push("/login");
@@ -232,6 +306,7 @@ export default function InvitationsPage() {
                 <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Role</th>
                 <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Expires</th>
                 <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Accepted</th>
+                <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -242,6 +317,20 @@ export default function InvitationsPage() {
                   <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>{new Date(i.expires_at).toLocaleString()}</td>
                   <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>
                     {i.accepted_at ? new Date(i.accepted_at).toLocaleString() : "—"}
+<td style={{ borderBottom: "1px solid #eee", padding: 8, display: "flex", gap: 8 }}>
+  {i.accepted_at ? (
+    "—"
+  ) : (
+    <>
+      <button onClick={() => regenerateInvite(i)} style={{ padding: 6 }}>
+        Regenerate link
+      </button>
+      <button onClick={() => deleteInvite(i.id)} style={{ padding: 6 }}>
+        Delete
+      </button>
+    </>
+  )}
+</td>
                   </td>
                 </tr>
               ))}

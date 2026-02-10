@@ -25,6 +25,13 @@ export default function LoginPage() {
       return;
     }
 
+    const pending = localStorage.getItem("pending_invite_token");
+    if (pending) {
+      localStorage.removeItem("pending_invite_token");
+      router.push(`/accept-invite?token=${encodeURIComponent(pending)}`);
+      return;
+    }
+
     router.push("/me");
   }
 
