@@ -15,6 +15,7 @@ export default function MePage() {
   const [email, setEmail] = useState<string>("");
   const [memberships, setMemberships] = useState<MembershipRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string>("");
 
   useEffect(() => {
     async function load() {
@@ -30,10 +31,12 @@ export default function MePage() {
       }
 
       setEmail(user.email ?? "");
+      setUserId(user.id);
 
       const { data, error } = await supabase
-        .from("agency_memberships")
-        .select("agency_id, role, agencies:agencies(id, name)");
+       .from("agency_memberships")
+       .select("agency_id, role, agencies:agencies(id, name)")
+       .eq("user_id", user.id);
 
       if (error) return setError(error.message);
 
@@ -60,7 +63,7 @@ export default function MePage() {
             <strong>Email:</strong> {email}
           </p>
           <p style={{ opacity: 0.7, fontSize: 14 }}>
-          User ID: {user?.id}
+          User ID: {userId}
           </p>
 
           <h2>Agencies</h2>
