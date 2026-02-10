@@ -59,6 +59,9 @@ export default function MePage() {
           <p>
             <strong>Email:</strong> {email}
           </p>
+          <p style={{ opacity: 0.7, fontSize: 14 }}>
+          User ID: {user?.id}
+          </p>
 
           <h2>Agencies</h2>
           {memberships.length === 0 ? (
