@@ -1,7 +1,25 @@
 :root {
+  --bg: #0b0d10;
+  --text: #e8eef6;
+  --mutedText: #a6b2c2;
+  --card: #121722;
+  --border: #232c3a;
+  --primary: #7c3aed;
+  --primaryText: #ffffff;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+a {
+  color: var(--primary);
+}
+/*:root {
   --background: #ffffff;
   --foreground: #171717;
-}
+}*/
 
 @media (prefers-color-scheme: dark) {
   :root {
