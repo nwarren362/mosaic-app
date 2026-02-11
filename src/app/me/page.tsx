@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
+import { getActiveAgencyId, setActiveAgencyId } from "@/lib/agencyContext";
 
 type MembershipRow = {
   agency_id: string;
@@ -16,6 +17,7 @@ export default function MePage() {
   const [memberships, setMemberships] = useState<MembershipRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string>("");
+  const [activeAgencyId, setActiveAgencyIdState] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -39,8 +41,18 @@ export default function MePage() {
        .eq("user_id", user.id);
 
       if (error) return setError(error.message);
+      const typed = (data ?? []) as unknown as MembershipRow[];
+      setMemberships(typed);
 
-      setMemberships((data ?? []) as unknown as MembershipRow[]);
+      // Initialize active agency
+      const stored = getActiveAgencyId();
+
+      if (stored && typed.some((m) => m.agency_id === stored)) {
+        setActiveAgencyIdState(stored);
+      } else if (typed.length === 1) {
+        setActiveAgencyIdState(typed[0].agency_id);
+        setActiveAgencyId(typed[0].agency_id);
+      }
     }
 
     load();
@@ -67,6 +79,27 @@ export default function MePage() {
           </p>
 
           <h2>Agencies</h2>
+          <label style={{ display: "block", marginBottom: 12 }}>
+          Active agency{" "}
+          <select
+            value={activeAgencyId ?? ""}
+            onChange={(e) => {
+              const id = e.target.value;
+              setActiveAgencyIdState(id);
+              setActiveAgencyId(id);
+            }}
+            style={{ padding: 8, marginLeft: 8 }}
+          >
+            <option value="" disabled>
+              Select…
+            </option>
+            {memberships.map((m) => (
+              <option key={m.agency_id} value={m.agency_id}>
+                {m.agencies?.name ?? m.agency_id} ({m.role})
+              </option>
+            ))}
+          </select>
+        </label>
           {memberships.length === 0 ? (
             <p>No memberships found.</p>
           ) : (
