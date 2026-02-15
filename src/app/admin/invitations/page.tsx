@@ -1,5 +1,6 @@
 "use client";
 
+import { Page, Card, Button, Input } from "@/components/ui";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
@@ -20,10 +21,11 @@ type InvitationRow = {
 };
 
 function randomToken(): string {
-  // Browser-safe random token
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export default function InvitationsPage() {
@@ -53,7 +55,6 @@ export default function InvitationsPage() {
       return;
     }
 
-    // Load agencies user belongs to
     const { data: ms, error: mErr } = await supabase
       .from("agency_memberships")
       .select("agency_id, role, agencies:agencies(id, name)");
@@ -64,9 +65,18 @@ export default function InvitationsPage() {
     }
 
     const typed = (ms ?? []) as unknown as Membership[];
-    setMemberships(typed);
+    // Deduplicate memberships (safety belt)
+    const unique = new Map<string, Membership>();
+    for (const m of typed) {
+      const key = `${m.agency_id}`;
+      // Keep admin if duplicates exist
+      const existing = unique.get(key);
+      if (!existing) unique.set(key, m);
+      else if (existing.role !== "admin" && m.role === "admin") unique.set(key, m);
+    }
 
-    // Default to first agency
+setMemberships(Array.from(unique.values()));
+
     const firstAgencyId = typed[0]?.agency_id ?? "";
     setAgencyId((prev) => prev || firstAgencyId);
   }
@@ -88,14 +98,12 @@ export default function InvitationsPage() {
 
     setInvites((data ?? []) as InvitationRow[]);
   }
+
   async function deleteInvite(inviteId: string) {
     setMessage(null);
     setAcceptLink(null);
 
-    const { error } = await supabase
-      .from("agency_invitations")
-      .delete()
-      .eq("id", inviteId);
+    const { error } = await supabase.from("agency_invitations").delete().eq("id", inviteId);
 
     if (error) {
       setMessage(error.message);
@@ -105,15 +113,60 @@ export default function InvitationsPage() {
     setMessage("Invite deleted.");
     await loadInvites(agencyId);
   }
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
-  useEffect(() => {
-    if (agencyId) loadInvites(agencyId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agencyId]);
+  async function regenerateInvite(invite: InvitationRow) {
+    setMessage(null);
+    setAcceptLink(null);
+
+    if (!agencyId) {
+      setMessage("No agency selected.");
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData.session?.user;
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    // Delete old invite first (only if still pending)
+    if (!invite.accepted_at) {
+      const { error: delErr } = await supabase.from("agency_invitations").delete().eq("id", invite.id);
+      if (delErr) {
+        setMessage(delErr.message);
+        return;
+      }
+    }
+
+    try {
+      const token = randomToken();
+
+      const { data: tokenHash, error: hashErr } = await supabase.rpc("invite_token_hash", {
+        p_token: token,
+      });
+      if (hashErr) throw new Error(hashErr.message);
+
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      const { error: insErr } = await supabase.from("agency_invitations").insert({
+        agency_id: agencyId,
+        email: invite.email,
+        role: invite.role,
+        token_hash: tokenHash,
+        invited_by: user.id,
+        expires_at: expiresAt,
+      });
+      if (insErr) throw new Error(insErr.message);
+
+      const link = `${window.location.origin}/accept-invite?token=${encodeURIComponent(token)}`;
+      setAcceptLink(link);
+      setMessage(`New invite link generated for ${invite.email}.`);
+      await loadInvites(agencyId);
+    } catch (e: any) {
+      setMessage(e?.message ?? "Failed to regenerate invite.");
+    }
+  }
 
   async function onCreateInvite(e: React.FormEvent) {
     e.preventDefault();
@@ -138,11 +191,9 @@ export default function InvitationsPage() {
     try {
       const token = randomToken();
 
-      // Hash token in DB (returns bytea)
       const { data: tokenHash, error: hashErr } = await supabase.rpc("invite_token_hash", {
         p_token: token,
       });
-
       if (hashErr) throw new Error(hashErr.message);
 
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -155,14 +206,12 @@ export default function InvitationsPage() {
         invited_by: user.id,
         expires_at: expiresAt,
       });
-
       if (insErr) throw new Error(insErr.message);
 
       const link = `${window.location.origin}/accept-invite?token=${encodeURIComponent(token)}`;
       setAcceptLink(link);
       setMessage(`Invite created for ${email} (${role}) in ${selectedAgencyName}.`);
       setEmail("");
-
       await loadInvites(agencyId);
     } catch (err: any) {
       setMessage(err?.message ?? "Failed to create invite.");
@@ -170,178 +219,157 @@ export default function InvitationsPage() {
       setLoading(false);
     }
   }
-  async function regenerateInvite(invite: InvitationRow) {
-    setMessage(null);
-    setAcceptLink(null);
 
-    if (!agencyId) {
-      setMessage("No agency selected.");
-      return;
-    }
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
-    // Delete old invite first (only if still pending)
-    if (!invite.accepted_at) {
-      const { error: delErr } = await supabase
-        .from("agency_invitations")
-        .delete()
-        .eq("id", invite.id);
-
-      if (delErr) {
-        setMessage(delErr.message);
-        return;
-      }
-    }
-
-    // Create a fresh invite with same email + role
-    try {
-      const token = randomToken();
-
-      const { data: tokenHash, error: hashErr } = await supabase.rpc("invite_token_hash", {
-        p_token: token,
-      });
-      if (hashErr) throw new Error(hashErr.message);
-
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-      const { error: insErr } = await supabase.from("agency_invitations").insert({
-        agency_id: agencyId,
-        email: invite.email,
-        role: invite.role,
-        token_hash: tokenHash,
-        invited_by: user.id,
-        expires_at: expiresAt,
-      });
-      if (insErr) throw new Error(insErr.message);
-
-      const link = `${window.location.origin}/accept-invite?token=${encodeURIComponent(token)}`;
-      setAcceptLink(link);
-      setMessage(`New invite link generated for ${invite.email}.`);
-
-      await loadInvites(agencyId);
-    } catch (e: any) {
-      setMessage(e?.message ?? "Failed to regenerate invite.");
-    }
-  }
-  async function onLogout() {
-    await supabase.auth.signOut();
-    router.push("/login");
-  }
+  useEffect(() => {
+    if (agencyId) loadInvites(agencyId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agencyId]);
 
   return (
-    <main style={{ padding: 24, maxWidth: 900 }}>
-      <h1>Invitations</h1>
+    <Page title="Invitations">
+      {message && (
+        <p style={{ color: message.toLowerCase().includes("failed") || message.toLowerCase().includes("error") ? "#ff6b6b" : "var(--primary)" }}>
+          {message}
+        </p>
+      )}
 
-      {message && <p style={{ color: message.startsWith("Invite created") ? "green" : "crimson" }}>{message}</p>}
+      {acceptLink && (
+        <Card>
+          <p style={{ color: "var(--mutedText)" }}>Copy this link (shown only once):</p>
+          <pre style={{ padding: 12, overflowX: "auto" }}>{acceptLink}</pre>
+        </Card>
+      )}
 
-      <section style={{ marginTop: 16, padding: 16, border: "1px solid #ddd", borderRadius: 8 }}>
-        <h2>Create invite</h2>
+      <div style={{ marginTop: 16 }}>
+        <Card>
+          <h2 style={{ marginBottom: 12 }}>Create invite</h2>
 
-        <div style={{ marginBottom: 12 }}>
-          <label>
-            Agency{" "}
-            <select value={agencyId} onChange={(e) => setAgencyId(e.target.value)} style={{ padding: 8 }}>
-              {memberships.map((m) => (
-                <option key={m.agency_id} value={m.agency_id}>
-                  {m.agencies?.name ?? m.agency_id} (you are {m.role})
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+          <div style={{ display: "grid", gap: 12, maxWidth: 560 }}>
+            <label>
+              Agency
+              <select
+                value={agencyId}
+                onChange={(e) => setAgencyId(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid var(--border)",
+                  background: "transparent",
+                  color: "var(--text)",
+                  marginTop: 6,
+                }}
+              >
+                {memberships.map((m) => (
+                  <option key={m.agency_id} value={m.agency_id}>
+                    {m.agencies?.name ?? m.agency_id} (you are {m.role})
+                  </option>
+                ))}
+              </select>
+            </label>
 
-        <form onSubmit={onCreateInvite} style={{ display: "grid", gap: 12, maxWidth: 520 }}>
-          <label>
-            Invitee email
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{ width: "100%", padding: 8 }}
-              placeholder="person@example.com"
-              autoComplete="email"
-              required
-            />
-          </label>
+            <form onSubmit={onCreateInvite} style={{ display: "grid", gap: 12 }}>
+              <label>
+                Invitee email
+                <div style={{ marginTop: 6 }}>
+                  <Input value={email} onChange={(e) => setEmail(e.target.value)} required type="email" autoComplete="email" />
+                </div>
+              </label>
 
-          <label>
-            Role
-            <select value={role} onChange={(e) => setRole(e.target.value as any)} style={{ width: "100%", padding: 8 }}>
-              <option value="agent">agent</option>
-              <option value="admin">admin</option>
-            </select>
-          </label>
+              <label>
+                Role
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as "agent" | "admin")}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "transparent",
+                    color: "var(--text)",
+                    marginTop: 6,
+                  }}
+                >
+                  <option value="agent">agent</option>
+                  <option value="admin">admin</option>
+                </select>
+              </label>
 
-          <button disabled={loading} type="submit" style={{ padding: 10 }}>
-            {loading ? "Creating..." : "Create invite"}
-          </button>
-        </form>
-
-        {acceptLink && (
-          <div style={{ marginTop: 16 }}>
-            <p><strong>Acceptance link (copy/paste):</strong></p>
-            <pre style={{ padding: 12, background: "#f6f6f6", overflow: "auto" }}>{acceptLink}</pre>
-            <p style={{ marginTop: 8 }}>
-              Open this link in an incognito/private window to test as a different user.
-            </p>
+              <Button type="submit" disabled={loading} variant="primary">
+                {loading ? "Creating..." : "Create invite"}
+              </Button>
+            </form>
           </div>
-        )}
-      </section>
+        </Card>
+      </div>
 
-      <section style={{ marginTop: 24 }}>
-        <h2>Invites for this agency</h2>
+      <div style={{ marginTop: 16 }}>
+        <Card>
+          <h2 style={{ marginBottom: 12 }}>Invites for this agency</h2>
 
-        {invites.length === 0 ? (
-          <p>No invites yet.</p>
-        ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Email</th>
-                <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Role</th>
-                <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Expires</th>
-                <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Accepted</th>
-                <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invites.map((i) => (
-                <tr key={i.id}>
-                  <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>{i.email}</td>
-                  <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>{i.role}</td>
-                  <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>{new Date(i.expires_at).toLocaleString()}</td>
-                  <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>
-                    {i.accepted_at ? new Date(i.accepted_at).toLocaleString() : "—"}
-<td style={{ borderBottom: "1px solid #eee", padding: 8, display: "flex", gap: 8 }}>
-  {i.accepted_at ? (
-    "—"
-  ) : (
-    <>
-      <button onClick={() => regenerateInvite(i)} style={{ padding: 6 }}>
-        Regenerate link
-      </button>
-      <button onClick={() => deleteInvite(i.id)} style={{ padding: 6 }}>
-        Delete
-      </button>
-    </>
-  )}
-</td>
-                  </td>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", borderBottom: "1px solid var(--border)", padding: 8 }}>Email</th>
+                  <th style={{ textAlign: "left", borderBottom: "1px solid var(--border)", padding: 8 }}>Role</th>
+                  <th style={{ textAlign: "left", borderBottom: "1px solid var(--border)", padding: 8 }}>Expires</th>
+                  <th style={{ textAlign: "left", borderBottom: "1px solid var(--border)", padding: 8 }}>Accepted</th>
+                  <th style={{ textAlign: "left", borderBottom: "1px solid var(--border)", padding: 8 }}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+              </thead>
+              <tbody>
+                {invites.map((i) => (
+                  <tr key={i.id}>
+                    <td style={{ borderBottom: "1px solid var(--border)", padding: 8 }}>{i.email}</td>
+                    <td style={{ borderBottom: "1px solid var(--border)", padding: 8 }}>{i.role}</td>
+                    <td style={{ borderBottom: "1px solid var(--border)", padding: 8 }}>
+                      {new Date(i.expires_at).toLocaleString()}
+                    </td>
+                    <td style={{ borderBottom: "1px solid var(--border)", padding: 8 }}>
+                      {i.accepted_at ? new Date(i.accepted_at).toLocaleString() : "—"}
+                    </td>
+                    <td style={{ borderBottom: "1px solid var(--border)", padding: 8 }}>
+                      {i.accepted_at ? (
+                        "—"
+                      ) : (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <Button onClick={() => regenerateInvite(i)} variant="ghost">
+                            Regenerate link
+                          </Button>
+                          <Button onClick={() => deleteInvite(i.id)} variant="danger">
+                            Delete
+                          </Button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
 
-      <button onClick={onLogout} style={{ marginTop: 24, padding: 10 }}>
-        Log out
-      </button>
-    </main>
+                {invites.length === 0 && (
+                  <tr>
+                    <td colSpan={5} style={{ padding: 12, color: "var(--mutedText)" }}>
+                      No invites found for this agency.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <Button onClick={() => supabase.auth.signOut().then(() => router.push("/login"))} variant="ghost">
+              Log out
+            </Button>
+          </div>
+        </Card>
+      </div>
+    </Page>
   );
 }

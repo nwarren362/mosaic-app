@@ -58,3 +58,35 @@ a {
     color-scheme: dark;
   }
 }
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+h1, h2, h3 {
+  margin: 0 0 12px;
+}
+
+p {
+  margin: 0 0 12px;
+  color: var(--text);
+}
+
+label {
+  color: var(--mutedText);
+  font-size: 14px;
+}
+
+table {
+  width: 100%;
+}
+
+pre {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 12px;
+}

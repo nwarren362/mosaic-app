@@ -1,5 +1,6 @@
 "use client";
 
+import { Page, Card, Button, Input } from "@/components/ui";
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
@@ -42,28 +43,17 @@ export default function LoginPage() {
       <form onSubmit={onLogin} style={{ display: "grid", gap: 12 }}>
         <label>
           Email
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ width: "100%", padding: 8 }}
-            autoComplete="email"
-          />
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
         </label>
 
         <label>
           Password
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ width: "100%", padding: 8 }}
-            autoComplete="current-password"
-          />
+          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
         </label>
 
-        <button disabled={loading} type="submit" style={{ padding: 10 }}>
-          {loading ? "Logging in..." : "Login"}
-        </button>
+        <Button type="submit" disabled={loading}>
+          {loading ? "Signing in..." : "Log in"}
+        </Button>
 
         {msg && <p style={{ color: "crimson" }}>{msg}</p>}
       </form>

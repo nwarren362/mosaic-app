@@ -81,7 +81,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
           <strong style={{ fontSize: 14 }}>{agencyName ?? "Mosaic"}</strong>
           <span style={{ fontSize: 12, color: "var(--mutedText)" }}>
-            {agencyName ? "Agency workspace" : "Vendor workspace"}
+            {agencyName ? "Agency workspace" : "Mosaic platform"}
           </span>
         </div>
       </header>

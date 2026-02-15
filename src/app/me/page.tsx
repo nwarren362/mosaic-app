@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import { getActiveAgencyId, setActiveAgencyId } from "@/lib/agencyContext";
+import { Button } from "@/components/ui";
 
 type MembershipRow = {
   agency_id: string;
@@ -88,7 +89,14 @@ export default function MePage() {
               setActiveAgencyIdState(id);
               setActiveAgencyId(id);
             }}
-            style={{ padding: 8, marginLeft: 8 }}
+            style={{
+              padding: 10,
+              marginLeft: 8,
+              borderRadius: 10,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text)", 
+            }}
           >
             <option value="" disabled>
               Select…
@@ -113,9 +121,9 @@ export default function MePage() {
             </ul>
           )}
 
-          <button onClick={onLogout} style={{ marginTop: 16, padding: 10 }}>
-            Log out
-          </button>
+         <div style={{ marginTop: 24 }}>
+          <Button onClick={onLogout} variant="primary">Log out</Button>
+        </div>
         </>
       )}
     </main>
