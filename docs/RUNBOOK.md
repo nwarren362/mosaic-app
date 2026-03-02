@@ -2,6 +2,15 @@
 
 This project is intentionally beginner-friendly. These notes capture “how to run” and common fixes.
 
+## Working With ChatGPT
+
+When modifying UI:
+
+- Always send full file contents when requesting edits.
+- Files should be explicitly renamed before upload (e.g. venue_id_page.tsx).
+- ChatGPT should return full drop-in replacement files.
+- No partial regex edits.
+
 ## Local development
 1) Start dev server:
    - `npm run dev`

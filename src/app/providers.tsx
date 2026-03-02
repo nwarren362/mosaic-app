@@ -1,92 +1,189 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { getActiveAgencyId } from "@/lib/agencyContext";
 import { THEME_PRESETS, ThemePreset } from "@/lib/themePresets";
+import { getActiveAgencyId } from "@/lib/agencyContext";
+import AppShell from "@/components/AppShell";
 
-type AgencyThemeRow = {
-  id: string;
-  name: string;
-  theme_preset: string | null;
-  logo_url: string | null;
-};
+export default function Providers({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
 
-function applyPreset(presetKey: ThemePreset) {
-  const vars = THEME_PRESETS[presetKey];
-  for (const [k, v] of Object.entries(vars)) {
-    document.documentElement.style.setProperty(k, v);
-  }
-}
-
-export function Providers({ children }: { children: React.ReactNode }) {
   const [agencyName, setAgencyName] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [isSuperUser, setIsSuperUser] = useState(false);
+
+  const [navOpen, setNavOpen] = useState(false);       // mobile drawer
+  const [collapsed, setCollapsed] = useState(false);   // desktop sidebar collapse
+  const [isMobile, setIsMobile] = useState(false);
+
+  function applyTheme(preset: ThemePreset) {
+    const vars = THEME_PRESETS[preset] ?? THEME_PRESETS.obsidian;
+    for (const [k, v] of Object.entries(vars)) {
+      document.documentElement.style.setProperty(`--${k}`, v);
+    }
+  }
 
   useEffect(() => {
-    async function loadTheme() {
-      // Default theme (vendor)
-      applyPreset("obsidian");
+    // Track screen size for hamburger behavior
+    const onResize = () => setIsMobile(window.innerWidth <= 900);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    async function loadThemeAndHeader() {
+      // Close mobile drawer on navigation
+      setNavOpen(false);
+
+      // Default vendor theme
+      applyTheme("obsidian");
       setAgencyName(null);
       setLogoUrl(null);
 
-      const agencyId = getActiveAgencyId();
-      if (!agencyId) return;
-
-      // If user is not logged in, we *can't* read agencies from DB safely (RLS).
-      // So on login/signup screens, we’ll show vendor branding unless user already has a session.
       const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) return;
+      const user = sessionData.session?.user;
 
-      const { data, error } = await supabase
+      if (!user) {
+        setIsSuperUser(false);
+        return;
+      }
+
+      // Super user flag
+      const { data: prof } = await supabase.from("profiles").select("is_super_user").eq("id", user.id).single();
+      setIsSuperUser(!!prof?.is_super_user);
+
+      // Agency context
+      const activeAgencyId = getActiveAgencyId();
+      if (!activeAgencyId) return;
+
+      const { data: agency, error } = await supabase
         .from("agencies")
-        .select("id, name, theme_preset, logo_url")
-        .eq("id", agencyId)
+        .select("name, theme_preset, logo_url")
+        .eq("id", activeAgencyId)
         .single();
 
-      if (error || !data) return;
+      if (error) return;
 
-      const row = data as AgencyThemeRow;
-      const preset = (row.theme_preset ?? "obsidian") as ThemePreset;
+      setAgencyName(agency?.name ?? null);
+      setLogoUrl(agency?.logo_url ?? null);
 
-      if (THEME_PRESETS[preset]) applyPreset(preset);
-      setAgencyName(row.name);
-      setLogoUrl(row.logo_url);
+      const preset = (agency?.theme_preset as ThemePreset) || "obsidian";
+      applyTheme(preset);
     }
 
-    loadTheme();
-  }, []);
+    loadThemeAndHeader();
+    window.addEventListener("focus", loadThemeAndHeader);
+    return () => window.removeEventListener("focus", loadThemeAndHeader);
+  }, [pathname]);
+
+  function onHamburger() {
+    if (isMobile) setNavOpen(true);
+    else setCollapsed((v) => !v);
+  }
 
   return (
     <>
-      {/* Simple header */}
       <header
         style={{
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          padding: "12px 16px",
-          borderBottom: "1px solid var(--border)",
-          background: "var(--bg)",
-          color: "var(--text)",
+          position: "sticky",
+          top: 0,
+          zIndex: 50,
+          backdropFilter: "blur(10px)",
+          background: "rgba(0,0,0,0.55)",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        {logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logoUrl} alt="Agency logo" style={{ height: 28, width: 28, borderRadius: 6 }} />
-        ) : (
-          <div style={{ height: 28, width: 28, borderRadius: 6, background: "var(--card)", border: "1px solid var(--border)" }} />
-        )}
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            padding: "12px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* Hamburger (mobile drawer / desktop collapse) */}
+            <button
+              onClick={onHamburger}
+              aria-label="Menu"
+              style={{
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(255,255,255,0.04)",
+                color: "var(--text)",
+                padding: "8px 10px",
+                borderRadius: "var(--radius-md)",
+                cursor: "pointer",
+                fontWeight: 900,
+                lineHeight: 1,
+              }}
+            >
+              ☰
+            </button>
 
-        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
-          <strong style={{ fontSize: 14 }}>{agencyName ?? "Mosaic"}</strong>
-          <span style={{ fontSize: 12, color: "var(--mutedText)" }}>
-            {agencyName ? "Agency workspace" : "Mosaic platform"}
-          </span>
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt="Agency logo"
+                style={{
+                  height: 32,
+                  width: "auto",
+                  maxWidth: 140,
+                  objectFit: "contain",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.05)",
+                }}
+              />
+            )}
+
+            <div style={{ lineHeight: 1.1 }}>
+              <div style={{ fontWeight: 900, letterSpacing: -0.4 }}>{agencyName ?? "Mosaic App"}</div>
+              <div style={{ fontSize: 12, color: "var(--mutedText)" }}>
+                {agencyName ? "Agency workspace" : "Mosaic platform"}
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => router.push("/me")}
+            style={{
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(255,255,255,0.04)",
+              color: "var(--text)",
+              padding: "8px 10px",
+              borderRadius: "var(--radius-md)",
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
+            Workspace
+          </button>
         </div>
       </header>
 
-      {children}
+      <AppShell
+        isSuperUser={isSuperUser}
+        navOpen={navOpen}
+        setNavOpen={setNavOpen}
+        collapsed={collapsed}
+      >
+        {children}
+      </AppShell>
     </>
   );
 }

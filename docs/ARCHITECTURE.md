@@ -39,6 +39,17 @@ Authorization is enforced by:
 
 Important: UI checks are for convenience only. **RLS is the security boundary.**
 
+## UI Architecture
+
+Mosaic uses a custom UI system defined in:
+- src/components/ui.tsx
+- src/app/globals.css
+- src/lib/themePresets.ts
+- src/app/providers.tsx
+
+All visual components must use UI primitives defined in ui.tsx.
+No page should style raw HTML elements directly.
+
 ## Key flows
 
 ### Bootstrap (first-time setup)

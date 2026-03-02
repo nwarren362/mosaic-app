@@ -17,14 +17,22 @@ export function Page({ title, children }: { title?: string; children: React.Reac
   );
 }
 
-export function Card({ children }: { children: React.ReactNode }) {
+export function Card({
+  children,
+  style,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & {
+  children: React.ReactNode;
+}) {
   return (
     <section
+      {...props}
       style={{
         background: "var(--card)",
         border: "1px solid var(--border)",
         borderRadius: 12,
         padding: 16,
+        ...style,
       }}
     >
       {children}
@@ -32,36 +40,55 @@ export function Card({ children }: { children: React.ReactNode }) {
   );
 }
 
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+
 export function Button({
   children,
-  onClick,
-  type,
-  disabled,
   variant = "primary",
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  type?: "button" | "submit";
-  disabled?: boolean;
-  variant?: "primary" | "ghost" | "danger";
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant;
 }) {
   const base: React.CSSProperties = {
-    padding: "10px 12px",
-    borderRadius: 10,
-    border: "1px solid var(--border)",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.6 : 1,
+    padding: "10px 16px",
+    borderRadius: "var(--radius-md)",
+    fontSize: "var(--font-size-sm)",
     fontWeight: 600,
+    cursor: "pointer",
+    transition: "var(--transition-fast)",
+    border: "1px solid transparent",
   };
 
-  const styles: Record<string, React.CSSProperties> = {
-    primary: { background: "var(--primary)", color: "var(--primaryText)", border: "1px solid transparent" },
-    ghost: { background: "transparent", color: "var(--text)" },
-    danger: { background: "transparent", color: "#ff6b6b", border: "1px solid #5b2323" },
+  const variants: Record<ButtonVariant, React.CSSProperties> = {
+    primary: {
+      background: "var(--primary)",
+      color: "#fff",
+      boxShadow: "var(--shadow-soft)",
+    },
+    secondary: {
+      background: "rgba(255,255,255,0.03)",
+      color: "var(--text)",
+      border: "1px solid rgba(255,255,255,0.18)",
+    },
+    ghost: {
+      background: "transparent",
+      color: "var(--mutedText)",
+    },
+    danger: {
+      background: "#e5484d",
+      color: "#fff",
+    },
   };
 
   return (
-    <button type={type ?? "button"} onClick={onClick} disabled={disabled} style={{ ...base, ...styles[variant] }}>
+    <button
+      {...props}
+      style={{
+        ...base,
+        ...variants[variant],
+        ...props.style,
+      }}
+    >
       {children}
     </button>
   );
@@ -79,6 +106,43 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
         background: "transparent",
         color: "var(--text)",
         outline: "none",
+      }}
+    />
+  );
+}
+
+export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      {...props}
+      style={{
+        width: "100%",
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: "1px solid var(--border)",
+        background: "transparent",
+        color: "var(--text)",
+        outline: "none",
+        resize: "vertical",
+        ...props.style,
+      }}
+    />
+  );
+}
+
+export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      {...props}
+      style={{
+        width: "100%",
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: "1px solid var(--border)",
+        background: "transparent",
+        color: "var(--text)",
+        outline: "none",
+        ...props.style,
       }}
     />
   );
