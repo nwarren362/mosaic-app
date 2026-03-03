@@ -147,3 +147,93 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
     />
   );
 }
+// --- Form primitives ---------------------------------------------------------
+
+export function FormSection({
+  title,
+  description,
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & {
+  title?: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      {...props}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        paddingTop: 12,
+        borderTop: "1px solid var(--border)",
+        ...props.style,
+      }}
+    >
+      {(title || description) && (
+        <header style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {title && (
+            <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{title}</h2>
+          )}
+          {description && (
+            <p style={{ margin: 0, fontSize: 13, color: "var(--mutedText)" }}>
+              {description}
+            </p>
+          )}
+        </header>
+      )}
+
+      {children}
+    </section>
+  );
+}
+
+export function Field({
+  label,
+  htmlFor,
+  required,
+  helpText,
+  error,
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & {
+  label: string;
+  htmlFor?: string;
+  required?: boolean;
+  helpText?: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      {...props}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        ...props.style,
+      }}
+    >
+      <label
+        htmlFor={htmlFor}
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: "var(--mutedText)",
+        }}
+      >
+        {label}
+        {required ? <span style={{ marginLeft: 4, color: "var(--text)" }}>*</span> : null}
+      </label>
+
+      {children}
+
+      {error ? (
+        <div style={{ fontSize: 12, color: "#e5484d" }}>{error}</div>
+      ) : helpText ? (
+        <div style={{ fontSize: 12, color: "var(--mutedText)" }}>{helpText}</div>
+      ) : null}
+    </div>
+  );
+}
