@@ -1,10 +1,9 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { Page, Card, Button, Input, Textarea, Select } from "@/components/ui";
+import { Page, Card, Button, Input, Textarea, Select, Field } from "@/components/ui";
 
 type Venue = {
   id: string;
@@ -16,6 +15,7 @@ type Venue = {
   website: string | null;
   notes: string | null;
   record_owner_id: string | null;
+  updated_at?: string | null; // optional so it won't break if not present
 };
 
 type AgencyMember = {
@@ -23,6 +23,26 @@ type AgencyMember = {
   display_name: string | null;
   role: string;
 };
+
+function formatUpdatedAt(iso?: string | null) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function memberLabel(m: AgencyMember) {
+  // The user asked for named individuals (not email). If display_name is missing,
+  // use a stable neutral fallback.
+  const base = (m.display_name && m.display_name.trim()) || `Member ${m.id.slice(0, 8)}`;
+  return m.role === "admin" ? `${base} (Admin)` : base;
+}
 
 export default function VenueDetailPage() {
   const router = useRouter();
@@ -43,10 +63,12 @@ export default function VenueDetailPage() {
   const [recordOwnerId, setRecordOwnerId] = useState("");
 
   const canSave = useMemo(() => name.trim().length > 0 && !saving, [name, saving]);
+  const updatedAtLabel = formatUpdatedAt(venue?.updated_at ?? null);
 
   useEffect(() => {
     if (!venueId) return;
-    loadVenue();
+    void loadVenue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [venueId]);
 
   async function loadVenue() {
@@ -60,13 +82,14 @@ export default function VenueDetailPage() {
 
     if (error) {
       alert(error.message);
+      setVenue(null);
       setLoading(false);
       return;
     }
 
     const v = data as Venue;
-    setVenue(v);
 
+    setVenue(v);
     setName(v.name ?? "");
     setCity(v.city ?? "");
     setCountry(v.country ?? "UK");
@@ -81,32 +104,50 @@ export default function VenueDetailPage() {
   }
 
   async function loadMembers(agencyId: string) {
-    const { data: memberships } = await supabase
+    const { data: memberships, error: membershipsError } = await supabase
       .from("agency_memberships")
       .select("user_id, role")
       .eq("agency_id", agencyId);
 
-    if (!memberships) return;
+    if (membershipsError) {
+      console.warn("Failed to load memberships:", membershipsError.message);
+      setMembers([]);
+      return;
+    }
+
+    if (!memberships || memberships.length === 0) {
+      setMembers([]);
+      return;
+    }
 
     const userIds = memberships.map((m: any) => m.user_id);
 
-    const { data: profiles } = await supabase
+    const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
       .select("id, display_name")
       .in("id", userIds);
 
-    if (!profiles) return;
+    if (profilesError) {
+      console.warn("Failed to load profiles:", profilesError.message);
+      setMembers([]);
+      return;
+    }
+
+    if (!profiles) {
+      setMembers([]);
+      return;
+    }
 
     const roleMap = new Map<string, string>();
     memberships.forEach((m: any) => roleMap.set(m.user_id, m.role));
 
-    const mapped = profiles.map((p: any) => ({
-      id: p.id,
-      display_name: p.display_name,
-      role: roleMap.get(p.id) ?? "agent",
-    }));
-
-    setMembers(mapped);
+    setMembers(
+      profiles.map((p: any) => ({
+        id: p.id,
+        display_name: p.display_name,
+        role: roleMap.get(p.id) ?? "agent",
+      }))
+    );
   }
 
   async function handleSave() {
@@ -116,9 +157,20 @@ export default function VenueDetailPage() {
 
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user) return;
+    if (userError) {
+      alert(userError.message);
+      setSaving(false);
+      return;
+    }
+
+    if (!user) {
+      alert("You must be signed in to save changes.");
+      setSaving(false);
+      return;
+    }
 
     const payload = {
       name,
@@ -131,25 +183,23 @@ export default function VenueDetailPage() {
       updated_by: user.id,
     };
 
-    const { error } = await supabase
-      .from("venues")
-      .update(payload)
-      .eq("id", venue.id);
+    const { error } = await supabase.from("venues").update(payload).eq("id", venue.id);
 
     if (error) {
       alert(error.message);
-    } else {
-      await loadVenue();
+      setSaving(false);
+      return;
     }
 
+    await loadVenue();
     setSaving(false);
   }
 
   if (loading) {
     return (
-      <Page title="Venue">
+      <Page title="Venue details">
         <Card>
-          <div className="p-4 text-sm opacity-70">Loading…</div>
+          <div style={{ fontSize: 14, color: "var(--mutedText)" }}>Loading venue…</div>
         </Card>
       </Page>
     );
@@ -157,82 +207,104 @@ export default function VenueDetailPage() {
 
   if (!venue) {
     return (
-      <Page title="Venue">
+      <Page title="Venue details">
         <Card>
-          <div className="p-4 text-sm opacity-70">Venue not found.</div>
+          <div className="flex flex-col gap-3">
+            <div style={{ fontSize: 14 }}>Venue not found.</div>
+            <Button variant="secondary" onClick={() => router.push("/venues")}>
+              Back to venues
+            </Button>
+          </div>
         </Card>
       </Page>
     );
   }
 
   return (
-    <Page title={name || "Venue"}>
-      <div className="space-y-4">
+    <Page title="Venue details">
+      <div className="flex flex-col gap-4">
+        {/* (1) Single header row */}
+        <div className="flex items-center justify-between gap-3">
+          <Button variant="secondary" onClick={() => router.push("/venues")}>
+            Back
+          </Button>
 
-        <div className="flex items-center">
-          <Button onClick={() => router.push("/venues")}>Back</Button>
+          <Button onClick={handleSave} disabled={!canSave}>
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          {/* No section headers; just clean spacing */}
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Venue name" required>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Venue name"
+                />
+              </Field>
 
-          <Card>
-            <div className="p-4 space-y-3">
-              <div className="text-sm font-medium opacity-80">Venue details</div>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Venue name" />
-              <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
-              <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Country" />
-            </div>
-          </Card>
+              <Field label="City">
+                <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
+              </Field>
 
-          <Card>
-            <div className="p-4 space-y-3">
-              <div className="text-sm font-medium opacity-80">Capacity & web</div>
-              <Input value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="Capacity" />
-              <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="Website" />
-            </div>
-          </Card>
+              <Field label="Country">
+                <Input
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  placeholder="Country"
+                />
+              </Field>
 
-          <Card>
-            <div className="p-4 space-y-3">
-              <div className="text-sm font-medium opacity-80">Relationship manager</div>
+              <Field label="Capacity">
+                <Input
+                  value={capacity}
+                  onChange={(e) => setCapacity(e.target.value)}
+                  placeholder="Capacity"
+                />
+              </Field>
 
-              <Select
-                value={recordOwnerId}
-                onChange={(e) => setRecordOwnerId(e.target.value)}
-              >
+              <Field label="Website">
+                <Input
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  placeholder="Website"
+                />
+              </Field>
+
+              <Field label="Record owner">
+                <Select value={recordOwnerId} onChange={(e) => setRecordOwnerId(e.target.value)}>
                   <option value="">Unassigned</option>
                   {members.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {(m.display_name ?? "Unnamed user") +
-                        (m.role === "admin" ? " (Admin)" : "")}
+                      {memberLabel(m)}
                     </option>
                   ))}
-              </Select>
+                </Select>
+              </Field>
             </div>
-          </Card>
 
-          <Card className="md:col-span-2">
-            <div className="p-4 space-y-3">
-              <div className="text-sm font-medium opacity-80">Notes</div>
+            <Field label="Notes">
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Internal notes"
+                placeholder="Notes"
                 style={{ minHeight: 140, resize: "vertical" }}
               />
-            </div>
-          </Card>
+            </Field>
 
-        </div>
-
-        <div className="md:hidden sticky bottom-3">
-          <div className="rounded-xl border border-white/10 bg-black/60 backdrop-blur p-3">
-            <Button onClick={handleSave} disabled={!canSave} className="w-full">
-              {saving ? "Saving…" : "Save changes"}
-            </Button>
+            {/* (3) Updated... bottom-right, muted */}
+            {updatedAtLabel ? (
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <div style={{ fontSize: 12, color: "var(--mutedText)" }}>
+                  Updated {updatedAtLabel}
+                </div>
+              </div>
+            ) : null}
           </div>
-        </div>
-
+        </Card>
       </div>
     </Page>
   );
