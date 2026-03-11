@@ -1,330 +1,359 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { getActiveAgencyId } from "@/lib/agencyContext";
-import { Page, Card, Button, Input } from "@/components/ui";
+import { Page, Card, Button, Input, Textarea, Select, Field } from "@/components/ui";
 
-type ArtistOption = { id: string; name: string };
-
-type GigRow = {
+type Venue = {
   id: string;
   agency_id: string;
-  artist_id: string;
-  title: string;
-  venue: string | null;
+  name: string;
   city: string | null;
-  starts_at: string;
-  status: "confirmed" | "pending" | "cancelled";
-  fee_cents: number;
+  country: string | null;
+  capacity: number | null;
+  website: string | null;
   notes: string | null;
+  record_owner_id: string | null;
+  updated_at: string;
 };
 
-function centsFromPounds(input: string) {
-  const v = Number(input);
-  if (!Number.isFinite(v)) return 0;
-  return Math.round(v * 100);
+type AgencyMembershipRow = {
+  user_id: string;
+  role: string;
+};
+
+type ProfileRow = {
+  id: string;
+  display_name: string | null;
+};
+
+type AgencyMember = {
+  id: string;
+  display_name: string | null;
+  role: string;
+};
+
+function formatUpdatedAt(iso?: string | null) {
+  if (!iso) return null;
+
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-function poundsFromCents(cents: number) {
-  return (cents / 100).toFixed(2);
+function memberLabel(member: AgencyMember) {
+  const base =
+    member.display_name && member.display_name.trim().length > 0
+      ? member.display_name.trim()
+      : `Member ${member.id.slice(0, 8)}`;
+
+  return member.role === "admin" ? `${base} (Admin)` : base;
 }
 
-export default function GigDetailPage() {
+export default function VenueDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const gigId = params?.id;
+  const venueId = params?.id;
 
+  const [venue, setVenue] = useState<Venue | null>(null);
+  const [members, setMembers] = useState<AgencyMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
 
-  const [artists, setArtists] = useState<ArtistOption[]>([]);
-
-  // Form state
-  const [artistId, setArtistId] = useState("");
-  const [title, setTitle] = useState("");
-  const [venue, setVenue] = useState("");
+  const [name, setName] = useState("");
   const [city, setCity] = useState("");
-  const [date, setDate] = useState(""); // yyyy-mm-dd
-  const [time, setTime] = useState("20:00");
-  const [status, setStatus] = useState<GigRow["status"]>("pending");
-  const [fee, setFee] = useState("0.00");
+  const [country, setCountry] = useState("");
+  const [capacity, setCapacity] = useState("");
+  const [website, setWebsite] = useState("");
   const [notes, setNotes] = useState("");
+  const [recordOwnerId, setRecordOwnerId] = useState("");
 
-  const startsAtIso = useMemo(() => {
-    // Combine date + time into ISO. We store as timestamptz. This is “good enough” for now.
-    if (!date) return "";
-    const t = time || "20:00";
-    const local = new Date(`${date}T${t}:00`);
-    return local.toISOString();
-  }, [date, time]);
+  const canSave = useMemo(() => name.trim().length > 0 && !saving, [name, saving]);
+  const updatedAtLabel = formatUpdatedAt(venue?.updated_at);
 
-  async function load() {
-    setMessage(null);
+  useEffect(() => {
+    if (!venueId) return;
+    void loadVenue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [venueId]);
+
+  async function loadVenue() {
     setLoading(true);
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
-    const activeAgency = getActiveAgencyId();
-    if (!activeAgency) {
-      setLoading(false);
-      setMessage("No active agency selected. Go to /me and choose an agency.");
-      return;
-    }
-
-    // Load artists (for dropdown)
-    const { data: artistRows, error: artistErr } = await supabase
-      .from("artists")
-      .select("id,name")
-      .eq("agency_id", activeAgency)
-      .order("name", { ascending: true });
-
-    if (artistErr) {
-      setMessage(artistErr.message);
-      setArtists([]);
-    } else {
-      setArtists((artistRows ?? []) as ArtistOption[]);
-    }
-
-    // Load gig
-    const { data: gig, error: gigErr } = await supabase
-      .from("gigs")
-      .select("id,agency_id,artist_id,title,venue,city,starts_at,status,fee_cents,notes")
-      .eq("id", gigId)
+    const { data, error } = await supabase
+      .from("venues")
+      .select("*")
+      .eq("id", venueId)
       .single();
 
-    if (gigErr) {
-      setMessage(gigErr.message);
+    if (error || !data) {
+      if (error) {
+        alert(error.message);
+      }
+      setVenue(null);
+      setMembers([]);
       setLoading(false);
       return;
     }
 
-    const g = gig as GigRow;
+    const v = data as Venue;
 
-    setArtistId(g.artist_id);
-    setTitle(g.title ?? "");
-    setVenue(g.venue ?? "");
-    setCity(g.city ?? "");
-    setStatus(g.status ?? "pending");
-    setFee(poundsFromCents(g.fee_cents ?? 0));
-    setNotes(g.notes ?? "");
+    setVenue(v);
+    setName(v.name ?? "");
+    setCity(v.city ?? "");
+    setCountry(v.country ?? "");
+    setCapacity(v.capacity != null ? String(v.capacity) : "");
+    setWebsite(v.website ?? "");
+    setNotes(v.notes ?? "");
+    setRecordOwnerId(v.record_owner_id ?? "");
 
-    // Split datetime into date+time for editing
-    const d = new Date(g.starts_at);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-    setDate(`${yyyy}-${mm}-${dd}`);
-    setTime(`${hh}:${mi}`);
-
+    await loadMembers(v.agency_id);
     setLoading(false);
   }
 
-  async function save() {
-    setMessage(null);
+  async function loadMembers(agencyId: string) {
+    const { data: memberships, error: membershipsError } = await supabase
+      .from("agency_memberships")
+      .select("user_id, role")
+      .eq("agency_id", agencyId);
+
+    if (membershipsError || !memberships) {
+      if (membershipsError) {
+        console.warn("Failed to load memberships:", membershipsError.message);
+      }
+      setMembers([]);
+      return;
+    }
+
+    if (memberships.length === 0) {
+      setMembers([]);
+      return;
+    }
+
+    const membershipRows = memberships as AgencyMembershipRow[];
+    const userIds = membershipRows.map((m) => m.user_id);
+
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id, display_name")
+      .in("id", userIds);
+
+    if (profilesError || !profiles) {
+      if (profilesError) {
+        console.warn("Failed to load profiles:", profilesError.message);
+      }
+      setMembers([]);
+      return;
+    }
+
+    const profileRows = profiles as ProfileRow[];
+    const roleMap = new Map<string, string>();
+    membershipRows.forEach((m) => roleMap.set(m.user_id, m.role));
+
+    const mergedMembers: AgencyMember[] = profileRows.map((p) => ({
+      id: p.id,
+      display_name: p.display_name,
+      role: roleMap.get(p.id) ?? "agent",
+    }));
+
+    mergedMembers.sort((a, b) => memberLabel(a).localeCompare(memberLabel(b)));
+
+    setMembers(mergedMembers);
+  }
+
+  async function handleSave() {
+    if (!venue) return;
+
     setSaving(true);
 
-    if (!artistId) {
-      setMessage("Please select an artist.");
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError) {
+      alert(userError.message);
       setSaving(false);
       return;
     }
-    if (!title.trim()) {
-      setMessage("Please enter a gig title.");
+
+    if (!user) {
+      alert("You must be signed in to save changes.");
       setSaving(false);
       return;
     }
-    if (!date) {
-      setMessage("Please choose a date.");
+
+    const trimmedName = name.trim();
+    const trimmedCity = city.trim();
+    const trimmedCountry = country.trim();
+    const trimmedWebsite = website.trim();
+    const trimmedNotes = notes.trim();
+    const trimmedCapacity = capacity.trim();
+
+    const parsedCapacity =
+      trimmedCapacity === "" ? null : Number.parseInt(trimmedCapacity, 10);
+
+    if (trimmedCapacity !== "" && Number.isNaN(parsedCapacity)) {
+      alert("Capacity must be a whole number.");
       setSaving(false);
       return;
     }
 
     const payload = {
-      artist_id: artistId,
-      title: title.trim(),
-      venue: venue.trim() || null,
-      city: city.trim() || null,
-      starts_at: startsAtIso,
-      status,
-      fee_cents: centsFromPounds(fee),
-      notes: notes.trim() || null,
+      name: trimmedName,
+      city: trimmedCity || null,
+      country: trimmedCountry || null,
+      capacity: parsedCapacity,
+      website: trimmedWebsite || null,
+      notes: trimmedNotes || null,
+      record_owner_id: recordOwnerId || null,
+      updated_by: user.id,
     };
 
-    const { error } = await supabase.from("gigs").update(payload).eq("id", gigId);
+    const { error } = await supabase.from("venues").update(payload).eq("id", venue.id);
 
     if (error) {
-      setMessage(error.message);
+      alert(error.message);
       setSaving(false);
       return;
     }
 
+    await loadVenue();
     setSaving(false);
-    setMessage("Saved.");
   }
 
-  async function deleteGig() {
-    const ok = confirm("Delete this gig? This cannot be undone.");
-    if (!ok) return;
-
-    setMessage(null);
-    setSaving(true);
-
-    const { error } = await supabase.from("gigs").delete().eq("id", gigId);
-
-    if (error) {
-      setMessage(error.message);
-      setSaving(false);
-      return;
-    }
-
-    setSaving(false);
-    router.push("/gigs");
+  if (loading) {
+    return (
+      <Page title="Venue details">
+        <Card>
+          <div style={{ fontSize: 14, color: "var(--mutedText)" }}>Loading venue…</div>
+        </Card>
+      </Page>
+    );
   }
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  if (!venue) {
+    return (
+      <Page title="Venue details">
+        <Card>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            <div style={{ fontSize: 14 }}>Venue not found.</div>
+            <div>
+              <Button variant="secondary" onClick={() => router.push("/venues")}>
+                Back to venues
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </Page>
+    );
+  }
 
   return (
-    <Page title="Gig">
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: "var(--space-3)" }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Link href="/gigs" style={{ textDecoration: "none" }}>
-            <Button type="button" variant="secondary">
-              Back to Gigs
-            </Button>
-          </Link>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Button type="button" variant="danger" onClick={deleteGig} disabled={saving || loading}>
-            Delete
+    <Page title="Venue details">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <Button variant="secondary" onClick={() => router.push("/venues")}>
+            Back
           </Button>
-          <Button type="button" onClick={save} disabled={saving || loading}>
+
+          <Button onClick={handleSave} disabled={!canSave}>
             {saving ? "Saving…" : "Save changes"}
           </Button>
         </div>
-      </div>
 
-      {message && <p style={{ color: "var(--mutedText)" }}>{message}</p>}
+        <Card>
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Venue name" required>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Venue name"
+                />
+              </Field>
 
-      <Card>
-        {loading ? (
-          <div style={{ color: "var(--mutedText)" }}>Loading…</div>
-        ) : (
-          <div style={{ display: "grid", gap: 14 }}>
-            <div>
-              <div style={{ fontSize: 12, color: "var(--mutedText)", fontWeight: 800 }}>Artist</div>
-              <select
-                value={artistId}
-                onChange={(e) => setArtistId(e.target.value)}
-                style={{
-                  marginTop: 6,
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.03)",
-                  color: "var(--text)",
-                }}
-              >
-                <option value="">Select…</option>
-                {artists.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+              <Field label="City">
+                <Input
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="City"
+                />
+              </Field>
 
-            <div>
-              <div style={{ fontSize: 12, color: "var(--mutedText)", fontWeight: 800 }}>Title</div>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. The Victoria Inn — Derby" />
-            </div>
+              <Field label="Country">
+                <Input
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  placeholder="Country"
+                />
+              </Field>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--mutedText)", fontWeight: 800 }}>Venue</div>
-                <Input value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="e.g. The Victoria Inn" />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--mutedText)", fontWeight: 800 }}>City</div>
-                <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Derby" />
-              </div>
-            </div>
+              <Field label="Capacity">
+                <Input
+                  value={capacity}
+                  onChange={(e) => setCapacity(e.target.value)}
+                  placeholder="Capacity"
+                  inputMode="numeric"
+                />
+              </Field>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--mutedText)", fontWeight: 800 }}>Date</div>
-                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--mutedText)", fontWeight: 800 }}>Performance time</div>
-                <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-              </div>
-            </div>
+              <Field label="Website">
+                <Input
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  placeholder="Website"
+                />
+              </Field>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--mutedText)", fontWeight: 800 }}>Fee (£)</div>
-                <Input value={fee} onChange={(e) => setFee(e.target.value)} placeholder="0.00" />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--mutedText)", fontWeight: 800 }}>Status</div>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as any)}
-                  style={{
-                    marginTop: 6,
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(255,255,255,0.03)",
-                    color: "var(--text)",
-                  }}
+              <Field label="Record owner">
+                <Select
+                  value={recordOwnerId}
+                  onChange={(e) => setRecordOwnerId(e.target.value)}
                 >
-                  <option value="pending">Pending</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
+                  <option value="">Unassigned</option>
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {memberLabel(m)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
             </div>
 
-            <div>
-              <div style={{ fontSize: 12, color: "var(--mutedText)", fontWeight: 800 }}>Comments</div>
-              <textarea
+            <Field label="Notes">
+              <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Load-in time, soundcheck, promoter notes…"
-                style={{
-                  marginTop: 6,
-                  width: "100%",
-                  minHeight: 110,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.03)",
-                  color: "var(--text)",
-                  resize: "vertical",
-                }}
+                placeholder="Notes"
+                style={{ minHeight: 140, resize: "vertical" }}
               />
-            </div>
+            </Field>
+
+            {updatedAtLabel ? (
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <div style={{ fontSize: 12, color: "var(--mutedText)" }}>
+                  Updated {updatedAtLabel}
+                </div>
+              </div>
+            ) : null}
           </div>
-        )}
-      </Card>
+        </Card>
+      </div>
     </Page>
   );
 }
