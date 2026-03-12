@@ -186,6 +186,12 @@ Columns
 - updated_by (uuid, nullable)
 - record_owner_id (uuid, nullable)
 - updated_at (timestamptz, not null)
+- latitude numeric
+- longitude numeric
+- google_maps_url text
+- google_place_id text
+
+Above 4 fields support routing, mapping and tour planning.
 
 Relationships (verified foreign keys)
 
@@ -193,6 +199,9 @@ Relationships (verified foreign keys)
 
 Referenced by
 
+- venue_contacts.venue_id
+- venue_feedback.venue_id
+- venue_activity.venue_id
 - gigs.venue_id
 
 Reference columns (not currently FK‑enforced)
@@ -226,6 +235,105 @@ System / metadata fields
 - updated_by
 
 ---
+
+## venue_contacts
+
+Purpose: People associated with a venue (bookers, promoters, production, etc.)
+
+Primary key
+
+- id (uuid)
+
+Columns
+
+- id
+- agency_id
+- venue_id
+- name
+- role
+- email
+- phone
+- notes
+- is_primary
+- created_at
+- updated_at
+- created_by
+- updated_by
+
+Relationships (verified foreign keys)
+
+- venue_contacts.agency_id → agencies.id
+- venue_contacts.venue_id → venues.id
+
+Reference columns (not FK-enforced)
+
+- venue_contacts.created_by → profiles.id
+- venue_contacts.updated_by → profiles.id
+
+---
+
+## venue_feedback
+
+Purpose: Operational knowledge and feedback about venues from gigs or agents.
+
+Primary key
+
+- id (uuid)
+
+Columns
+
+- id
+- agency_id
+- venue_id
+- author_id
+- gig_id
+- artist_id
+- feedback_type
+- rating
+- content
+- created_at
+- updated_at
+
+Relationships (verified foreign keys)
+
+- venue_feedback.agency_id → agencies.id
+- venue_feedback.venue_id → venues.id
+- venue_feedback.gig_id → gigs.id
+- venue_feedback.artist_id → artists.id
+
+Reference columns (not FK-enforced)
+
+- venue_feedback.author_id → profiles.id
+
+---
+
+## venue_activity
+
+Purpose: Timeline of actions related to a venue.
+
+Primary key
+
+- id (uuid)
+
+Columns
+
+- id
+- agency_id
+- venue_id
+- actor_id
+- activity_type
+- summary
+- metadata
+- created_at
+
+Relationships (verified foreign keys)
+
+- venue_activity.agency_id → agencies.id
+- venue_activity.venue_id → venues.id
+
+Reference columns (not FK-enforced)
+
+- venue_activity.actor_id → profiles.id
 
 ## gigs
 Purpose: Gigs or shows for artists.

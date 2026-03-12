@@ -40,6 +40,28 @@ export function Card({
   );
 }
 
+export function SectionCard({
+  title,
+  children,
+  className = "",
+}: {
+  title: string
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <Card className={className}>
+      <div className="flex flex-col gap-4">
+        <div className="text-sm font-medium text-muted-foreground">
+          {title}
+        </div>
+
+        {children}
+      </div>
+    </Card>
+  )
+}
+
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 export function Button({

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Page, Card, Button, Input, Textarea, Select, Field } from "@/components/ui";
+import { Page, Card, SectionCard, Button, Input, Textarea, Select, Field } from "@/components/ui";
 
 type Venue = {
   id: string;
@@ -15,7 +16,17 @@ type Venue = {
   website: string | null;
   notes: string | null;
   record_owner_id: string | null;
-  updated_at?: string | null; // optional so it won't break if not present
+  updated_at: string;
+};
+
+type AgencyMembershipRow = {
+  user_id: string;
+  role: string;
+};
+
+type ProfileRow = {
+  id: string;
+  display_name: string | null;
 };
 
 type AgencyMember = {
@@ -26,8 +37,10 @@ type AgencyMember = {
 
 function formatUpdatedAt(iso?: string | null) {
   if (!iso) return null;
+
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
+
   return d.toLocaleString(undefined, {
     year: "numeric",
     month: "short",
@@ -37,11 +50,13 @@ function formatUpdatedAt(iso?: string | null) {
   });
 }
 
-function memberLabel(m: AgencyMember) {
-  // The user asked for named individuals (not email). If display_name is missing,
-  // use a stable neutral fallback.
-  const base = (m.display_name && m.display_name.trim()) || `Member ${m.id.slice(0, 8)}`;
-  return m.role === "admin" ? `${base} (Admin)` : base;
+function memberLabel(member: AgencyMember) {
+  const base =
+    member.display_name && member.display_name.trim().length > 0
+      ? member.display_name.trim()
+      : `Member ${member.id.slice(0, 8)}`;
+
+  return member.role === "admin" ? `${base} (Admin)` : base;
 }
 
 export default function VenueDetailPage() {
@@ -56,14 +71,14 @@ export default function VenueDetailPage() {
 
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
-  const [country, setCountry] = useState("UK");
+  const [country, setCountry] = useState("");
   const [capacity, setCapacity] = useState("");
   const [website, setWebsite] = useState("");
   const [notes, setNotes] = useState("");
   const [recordOwnerId, setRecordOwnerId] = useState("");
 
   const canSave = useMemo(() => name.trim().length > 0 && !saving, [name, saving]);
-  const updatedAtLabel = formatUpdatedAt(venue?.updated_at ?? null);
+  const updatedAtLabel = formatUpdatedAt(venue?.updated_at);
 
   useEffect(() => {
     if (!venueId) return;
@@ -80,9 +95,12 @@ export default function VenueDetailPage() {
       .eq("id", venueId)
       .single();
 
-    if (error) {
-      alert(error.message);
+    if (error || !data) {
+      if (error) {
+        alert(error.message);
+      }
       setVenue(null);
+      setMembers([]);
       setLoading(false);
       return;
     }
@@ -92,14 +110,13 @@ export default function VenueDetailPage() {
     setVenue(v);
     setName(v.name ?? "");
     setCity(v.city ?? "");
-    setCountry(v.country ?? "UK");
-    setCapacity(v.capacity ? String(v.capacity) : "");
+    setCountry(v.country ?? "");
+    setCapacity(v.capacity != null ? String(v.capacity) : "");
     setWebsite(v.website ?? "");
     setNotes(v.notes ?? "");
     setRecordOwnerId(v.record_owner_id ?? "");
 
     await loadMembers(v.agency_id);
-
     setLoading(false);
   }
 
@@ -109,45 +126,48 @@ export default function VenueDetailPage() {
       .select("user_id, role")
       .eq("agency_id", agencyId);
 
-    if (membershipsError) {
-      console.warn("Failed to load memberships:", membershipsError.message);
+    if (membershipsError || !memberships) {
+      if (membershipsError) {
+        console.warn("Failed to load memberships:", membershipsError.message);
+      }
       setMembers([]);
       return;
     }
 
-    if (!memberships || memberships.length === 0) {
+    if (memberships.length === 0) {
       setMembers([]);
       return;
     }
 
-    const userIds = memberships.map((m: any) => m.user_id);
+    const membershipRows = memberships as AgencyMembershipRow[];
+    const userIds = membershipRows.map((m) => m.user_id);
 
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
       .select("id, display_name")
       .in("id", userIds);
 
-    if (profilesError) {
-      console.warn("Failed to load profiles:", profilesError.message);
+    if (profilesError || !profiles) {
+      if (profilesError) {
+        console.warn("Failed to load profiles:", profilesError.message);
+      }
       setMembers([]);
       return;
     }
 
-    if (!profiles) {
-      setMembers([]);
-      return;
-    }
-
+    const profileRows = profiles as ProfileRow[];
     const roleMap = new Map<string, string>();
-    memberships.forEach((m: any) => roleMap.set(m.user_id, m.role));
+    membershipRows.forEach((m) => roleMap.set(m.user_id, m.role));
 
-    setMembers(
-      profiles.map((p: any) => ({
-        id: p.id,
-        display_name: p.display_name,
-        role: roleMap.get(p.id) ?? "agent",
-      }))
-    );
+    const mergedMembers: AgencyMember[] = profileRows.map((p) => ({
+      id: p.id,
+      display_name: p.display_name,
+      role: roleMap.get(p.id) ?? "agent",
+    }));
+
+    mergedMembers.sort((a, b) => memberLabel(a).localeCompare(memberLabel(b)));
+
+    setMembers(mergedMembers);
   }
 
   async function handleSave() {
@@ -172,13 +192,29 @@ export default function VenueDetailPage() {
       return;
     }
 
+    const trimmedName = name.trim();
+    const trimmedCity = city.trim();
+    const trimmedCountry = country.trim();
+    const trimmedWebsite = website.trim();
+    const trimmedNotes = notes.trim();
+    const trimmedCapacity = capacity.trim();
+
+    const parsedCapacity =
+      trimmedCapacity === "" ? null : Number.parseInt(trimmedCapacity, 10);
+
+    if (trimmedCapacity !== "" && Number.isNaN(parsedCapacity)) {
+      alert("Capacity must be a whole number.");
+      setSaving(false);
+      return;
+    }
+
     const payload = {
-      name,
-      city: city || null,
-      country,
-      capacity: capacity ? Number(capacity) : null,
-      website: website || null,
-      notes: notes || null,
+      name: trimmedName,
+      city: trimmedCity || null,
+      country: trimmedCountry || null,
+      capacity: parsedCapacity,
+      website: trimmedWebsite || null,
+      notes: trimmedNotes || null,
       record_owner_id: recordOwnerId || null,
       updated_by: user.id,
     };
@@ -209,11 +245,19 @@ export default function VenueDetailPage() {
     return (
       <Page title="Venue details">
         <Card>
-          <div className="flex flex-col gap-3">
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
             <div style={{ fontSize: 14 }}>Venue not found.</div>
-            <Button variant="secondary" onClick={() => router.push("/venues")}>
-              Back to venues
-            </Button>
+            <div>
+              <Button variant="secondary" onClick={() => router.push("/venues")}>
+                Back to venues
+              </Button>
+            </div>
           </div>
         </Card>
       </Page>
@@ -223,7 +267,6 @@ export default function VenueDetailPage() {
   return (
     <Page title="Venue details">
       <div className="flex flex-col gap-4">
-        {/* (1) Single header row */}
         <div className="flex items-center justify-between gap-3">
           <Button variant="secondary" onClick={() => router.push("/venues")}>
             Back
@@ -235,7 +278,6 @@ export default function VenueDetailPage() {
         </div>
 
         <Card>
-          {/* No section headers; just clean spacing */}
           <div className="flex flex-col gap-4">
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Venue name" required>
@@ -247,7 +289,11 @@ export default function VenueDetailPage() {
               </Field>
 
               <Field label="City">
-                <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
+                <Input
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="City"
+                />
               </Field>
 
               <Field label="Country">
@@ -263,6 +309,7 @@ export default function VenueDetailPage() {
                   value={capacity}
                   onChange={(e) => setCapacity(e.target.value)}
                   placeholder="Capacity"
+                  inputMode="numeric"
                 />
               </Field>
 
@@ -275,7 +322,10 @@ export default function VenueDetailPage() {
               </Field>
 
               <Field label="Record owner">
-                <Select value={recordOwnerId} onChange={(e) => setRecordOwnerId(e.target.value)}>
+                <Select
+                  value={recordOwnerId}
+                  onChange={(e) => setRecordOwnerId(e.target.value)}
+                >
                   <option value="">Unassigned</option>
                   {members.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -295,7 +345,6 @@ export default function VenueDetailPage() {
               />
             </Field>
 
-            {/* (3) Updated... bottom-right, muted */}
             {updatedAtLabel ? (
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <div style={{ fontSize: 12, color: "var(--mutedText)" }}>
