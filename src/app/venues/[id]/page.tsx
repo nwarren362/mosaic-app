@@ -3,61 +3,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { Page, Card, Button, Input, Textarea, Select, Field } from "@/components/ui";
-import { Page, Card, SectionCard, Button, Input, Textarea, Select, Field } from "@/components/ui";
-
-type Venue = {
-  id: string;
-  agency_id: string;
-  name: string;
-  city: string | null;
-  country: string | null;
-  capacity: number | null;
-  website: string | null;
-  notes: string | null;
-  record_owner_id: string | null;
-  updated_at: string;
-};
-
-type AgencyMembershipRow = {
-  user_id: string;
-  role: string;
-};
-
-type ProfileRow = {
-  id: string;
-  display_name: string | null;
-};
-
-type AgencyMember = {
-  id: string;
-  display_name: string | null;
-  role: string;
-};
-
-function formatUpdatedAt(iso?: string | null) {
-  if (!iso) return null;
-
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function memberLabel(member: AgencyMember) {
-  const base =
-    member.display_name && member.display_name.trim().length > 0
-      ? member.display_name.trim()
-      : `Member ${member.id.slice(0, 8)}`;
-
-  return member.role === "admin" ? `${base} (Admin)` : base;
-}
+import { Page, SectionCard, Button } from "@/components/ui";
+import VenueDetailsSection from "./_components/VenueDetailsSection";
+import VenueContactsSection from "./_components/VenueContactsSection";
+import VenueFeedbackSection from "./_components/VenueFeedbackSection";
+import VenueActivitySection from "./_components/VenueActivitySection";
+import {
+  formatDateTime,
+  memberLabel,
+} from "./_lib/formatters";
+import type {
+  AgencyMember,
+  AgencyMembershipRow,
+  Artist,
+  Gig,
+  ProfileRow,
+  Venue,
+  VenueContact,
+  VenueFeedback,
+} from "./_lib/types";
 
 export default function VenueDetailPage() {
   const router = useRouter();
@@ -66,6 +30,11 @@ export default function VenueDetailPage() {
 
   const [venue, setVenue] = useState<Venue | null>(null);
   const [members, setMembers] = useState<AgencyMember[]>([]);
+  const [contacts, setContacts] = useState<VenueContact[]>([]);
+  const [feedbackItems, setFeedbackItems] = useState<VenueFeedback[]>([]);
+  const [artists, setArtists] = useState<Artist[]>([]);
+  const [gigs, setGigs] = useState<Gig[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -76,17 +45,18 @@ export default function VenueDetailPage() {
   const [website, setWebsite] = useState("");
   const [notes, setNotes] = useState("");
   const [recordOwnerId, setRecordOwnerId] = useState("");
+  const [googleMapsUrl, setGoogleMapsUrl] = useState("");
 
   const canSave = useMemo(() => name.trim().length > 0 && !saving, [name, saving]);
-  const updatedAtLabel = formatUpdatedAt(venue?.updated_at);
+  const updatedAtLabel = formatDateTime(venue?.updated_at);
 
   useEffect(() => {
     if (!venueId) return;
-    void loadVenue();
+    void loadVenuePage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [venueId]);
 
-  async function loadVenue() {
+  async function loadVenuePage() {
     setLoading(true);
 
     const { data, error } = await supabase
@@ -101,6 +71,10 @@ export default function VenueDetailPage() {
       }
       setVenue(null);
       setMembers([]);
+      setContacts([]);
+      setFeedbackItems([]);
+      setArtists([]);
+      setGigs([]);
       setLoading(false);
       return;
     }
@@ -115,8 +89,16 @@ export default function VenueDetailPage() {
     setWebsite(v.website ?? "");
     setNotes(v.notes ?? "");
     setRecordOwnerId(v.record_owner_id ?? "");
+    setGoogleMapsUrl(v.google_maps_url ?? "");
 
-    await loadMembers(v.agency_id);
+    await Promise.all([
+      loadMembers(v.agency_id),
+      loadContacts(v.id),
+      loadFeedback(v.id),
+      loadArtists(v.agency_id),
+      loadGigs(v.agency_id, v.id),
+    ]);
+
     setLoading(false);
   }
 
@@ -166,8 +148,81 @@ export default function VenueDetailPage() {
     }));
 
     mergedMembers.sort((a, b) => memberLabel(a).localeCompare(memberLabel(b)));
-
     setMembers(mergedMembers);
+  }
+
+  async function loadContacts(currentVenueId: string) {
+    const { data, error } = await supabase
+      .from("venue_contacts")
+      .select("*")
+      .eq("venue_id", currentVenueId)
+      .order("is_primary", { ascending: false })
+      .order("name", { ascending: true });
+
+    if (error || !data) {
+      if (error) {
+        console.warn("Failed to load contacts:", error.message);
+      }
+      setContacts([]);
+      return;
+    }
+
+    setContacts(data as VenueContact[]);
+  }
+
+  async function loadFeedback(currentVenueId: string) {
+    const { data, error } = await supabase
+      .from("venue_feedback")
+      .select("*")
+      .eq("venue_id", currentVenueId)
+      .order("created_at", { ascending: false });
+
+    if (error || !data) {
+      if (error) {
+        console.warn("Failed to load feedback:", error.message);
+      }
+      setFeedbackItems([]);
+      return;
+    }
+
+    setFeedbackItems(data as VenueFeedback[]);
+  }
+
+  async function loadArtists(agencyId: string) {
+    const { data, error } = await supabase
+      .from("artists")
+      .select("id, name")
+      .eq("agency_id", agencyId)
+      .order("name", { ascending: true });
+
+    if (error || !data) {
+      if (error) {
+        console.warn("Failed to load artists:", error.message);
+      }
+      setArtists([]);
+      return;
+    }
+
+    setArtists(data as Artist[]);
+  }
+
+  async function loadGigs(agencyId: string, currentVenueId: string) {
+    const { data, error } = await supabase
+      .from("gigs")
+      .select("id, title, starts_at")
+      .eq("agency_id", agencyId)
+      .eq("venue_id", currentVenueId)
+      .order("starts_at", { ascending: false });
+
+    if (error || !data) {
+      if (error) {
+        console.warn("Failed to load gigs:", error.message);
+      }
+      setGigs([]);
+      return;
+    }
+
+    setGigs(data as Gig[]);
   }
 
   async function handleSave() {
@@ -198,6 +253,7 @@ export default function VenueDetailPage() {
     const trimmedWebsite = website.trim();
     const trimmedNotes = notes.trim();
     const trimmedCapacity = capacity.trim();
+    const trimmedGoogleMapsUrl = googleMapsUrl.trim();
 
     const parsedCapacity =
       trimmedCapacity === "" ? null : Number.parseInt(trimmedCapacity, 10);
@@ -208,7 +264,7 @@ export default function VenueDetailPage() {
       return;
     }
 
-    const payload = {
+    const { error } = await supabase.from("venues").update({
       name: trimmedName,
       city: trimmedCity || null,
       country: trimmedCountry || null,
@@ -216,10 +272,9 @@ export default function VenueDetailPage() {
       website: trimmedWebsite || null,
       notes: trimmedNotes || null,
       record_owner_id: recordOwnerId || null,
+      google_maps_url: trimmedGoogleMapsUrl || null,
       updated_by: user.id,
-    };
-
-    const { error } = await supabase.from("venues").update(payload).eq("id", venue.id);
+    }).eq("id", venue.id);
 
     if (error) {
       alert(error.message);
@@ -227,16 +282,16 @@ export default function VenueDetailPage() {
       return;
     }
 
-    await loadVenue();
+    await loadVenuePage();
     setSaving(false);
   }
 
   if (loading) {
     return (
       <Page title="Venue details">
-        <Card>
+        <SectionCard title="Venue details">
           <div style={{ fontSize: 14, color: "var(--mutedText)" }}>Loading venue…</div>
-        </Card>
+        </SectionCard>
       </Page>
     );
   }
@@ -244,14 +299,8 @@ export default function VenueDetailPage() {
   if (!venue) {
     return (
       <Page title="Venue details">
-        <Card>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
+        <SectionCard title="Venue details">
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ fontSize: 14 }}>Venue not found.</div>
             <div>
               <Button variant="secondary" onClick={() => router.push("/venues")}>
@@ -259,7 +308,7 @@ export default function VenueDetailPage() {
               </Button>
             </div>
           </div>
-        </Card>
+        </SectionCard>
       </Page>
     );
   }
@@ -277,83 +326,42 @@ export default function VenueDetailPage() {
           </Button>
         </div>
 
-        <Card>
-          <div className="flex flex-col gap-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Venue name" required>
-                <Input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Venue name"
-                />
-              </Field>
+        <VenueDetailsSection
+          name={name}
+          setName={setName}
+          city={city}
+          setCity={setCity}
+          country={country}
+          setCountry={setCountry}
+          capacity={capacity}
+          setCapacity={setCapacity}
+          website={website}
+          setWebsite={setWebsite}
+          recordOwnerId={recordOwnerId}
+          setRecordOwnerId={setRecordOwnerId}
+          googleMapsUrl={googleMapsUrl}
+          setGoogleMapsUrl={setGoogleMapsUrl}
+          notes={notes}
+          setNotes={setNotes}
+          members={members}
+          updatedAtLabel={updatedAtLabel}
+        />
 
-              <Field label="City">
-                <Input
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="City"
-                />
-              </Field>
+        <VenueContactsSection
+          venue={venue}
+          contacts={contacts}
+          onContactsChanged={() => loadContacts(venue.id)}
+        />
 
-              <Field label="Country">
-                <Input
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  placeholder="Country"
-                />
-              </Field>
+        <VenueFeedbackSection
+          venue={venue}
+          feedbackItems={feedbackItems}
+          artists={artists}
+          gigs={gigs}
+          onFeedbackChanged={() => loadFeedback(venue.id)}
+        />
 
-              <Field label="Capacity">
-                <Input
-                  value={capacity}
-                  onChange={(e) => setCapacity(e.target.value)}
-                  placeholder="Capacity"
-                  inputMode="numeric"
-                />
-              </Field>
-
-              <Field label="Website">
-                <Input
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
-                  placeholder="Website"
-                />
-              </Field>
-
-              <Field label="Record owner">
-                <Select
-                  value={recordOwnerId}
-                  onChange={(e) => setRecordOwnerId(e.target.value)}
-                >
-                  <option value="">Unassigned</option>
-                  {members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {memberLabel(m)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
-
-            <Field label="Notes">
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Notes"
-                style={{ minHeight: 140, resize: "vertical" }}
-              />
-            </Field>
-
-            {updatedAtLabel ? (
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <div style={{ fontSize: 12, color: "var(--mutedText)" }}>
-                  Updated {updatedAtLabel}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </Card>
+        <VenueActivitySection />
       </div>
     </Page>
   );

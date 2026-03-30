@@ -45,21 +45,35 @@ export function SectionCard({
   children,
   className = "",
 }: {
-  title: string
-  children: React.ReactNode
-  className?: string
+  title: string;
+  children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <Card className={className}>
-      <div className="flex flex-col gap-4">
-        <div className="text-sm font-medium text-muted-foreground">
-          {title}
-        </div>
-
-        {children}
+    <Card
+      className={className}
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 16,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          padding: "12px 16px",
+          borderBottom: "1px solid var(--border)",
+          background: "rgba(255,255,255,0.02)",
+          fontSize: 14,
+          fontWeight: 700,
+          letterSpacing: 0.2,
+        }}
+      >
+        {title}
       </div>
+
+      <div style={{ padding: 16 }}>{children}</div>
     </Card>
-  )
+  );
 }
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
