@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutGrid,
   Music,
+  Building2,
   Mail,
   Palette,
   Wrench,
@@ -79,9 +80,10 @@ export default function AppShell({
 }) {
   const primary: NavItem[] = [
     { href: "/dashboard", label: "Dashboard", Icon: LayoutGrid },
-    { href: "/me", label: "Me", Icon: FileText },    
     { href: "/artists", label: "Artists", Icon: Music },
+    { href: "/venues", label: "Venues", Icon: Building2 },
     { href: "/gigs", label: "Gigs", Icon: Calendar },
+    { href: "/me", label: "Me", Icon: FileText },
     { href: "/admin/invitations", label: "Invitations", Icon: Mail },
   ];
 
@@ -123,14 +125,8 @@ export default function AppShell({
       </aside>
 
       {navOpen && (
-        <div
-          className="app-drawer-overlay"
-          onClick={() => setNavOpen(false)}
-        >
-          <div
-            className="app-drawer"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="app-drawer-overlay" onClick={() => setNavOpen(false)}>
+          <div className="app-drawer" onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: "var(--space-4)" }}>
               <nav style={{ display: "grid", gap: "var(--space-2)" }}>
                 {primary.map((i) => (
