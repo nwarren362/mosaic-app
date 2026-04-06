@@ -273,3 +273,168 @@ export function Field({
     </div>
   );
 }
+export function Badge({
+  children,
+  tone = "default",
+}: {
+  children: React.ReactNode;
+  tone?: "default" | "muted";
+}) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        background:
+          tone === "muted" ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.08)",
+        color: "var(--text)",
+        border: "1px solid rgba(255,255,255,0.08)",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function ActionTextLink({
+  children,
+  href,
+  onClick,
+  icon,
+  muted = false,
+}: {
+  children: React.ReactNode;
+  href?: string;
+  onClick?: () => void;
+  icon?: React.ReactNode;
+  muted?: boolean;
+}) {
+  const commonStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 13,
+    fontWeight: 600,
+    color: muted ? "var(--mutedText)" : "var(--text)",
+    textDecoration: "none",
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    cursor: "pointer",
+  };
+
+  if (href) {
+    return (
+      <a href={href} style={commonStyle}>
+        {icon}
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <button type="button" onClick={onClick} style={commonStyle}>
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+export function InlineAction({
+  children,
+  onClick,
+  muted = false,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  muted?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+        fontSize: 13,
+        textDecoration: "underline",
+        color: muted ? "var(--mutedText)" : "var(--text)",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function InfoTile({
+  label,
+  value,
+  action,
+}: {
+  label: string;
+  value: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: 12,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 12,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--mutedText)",
+            marginBottom: 4,
+          }}
+        >
+          {label}
+        </div>
+        <div
+          style={{
+            fontSize: 14,
+            color: "var(--text)",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {value}
+        </div>
+      </div>
+
+      {action ? <div>{action}</div> : null}
+    </div>
+  );
+}
+
+export function SectionActions({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 10,
+        flexWrap: "wrap",
+        paddingTop: 4,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
