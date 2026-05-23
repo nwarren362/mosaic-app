@@ -1,4 +1,4 @@
-import React from "react";
+import React, { forwardRef } from "react";
 
 export function Page({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
@@ -249,9 +249,13 @@ export function SegmentedControl<T extends string>({
   );
 }
 
-export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
+export const Input = forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement>
+>(function Input(props, ref) {
   return (
     <input
+      ref={ref}
       {...props}
       style={{
         width: "100%",
@@ -261,10 +265,11 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
         background: "transparent",
         color: "var(--text)",
         outline: "none",
+        ...props.style,
       }}
     />
   );
-}
+});
 
 export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
