@@ -1,10 +1,29 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { MessageSquarePlus, Star, Trash2 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
-import { SectionCard, Field, Input, Textarea, Select, Button } from "@/components/ui";
+import {
+  SectionCard,
+  Field,
+  Input,
+  Textarea,
+  Select,
+  Button,
+  Badge,
+  InlineAction,
+  InfoTile,
+  SectionActions,
+  ActionTextLink,
+} from "@/components/ui";
 import type { Artist, Gig, Venue, VenueFeedback } from "../_lib/types";
-import { artistNameById, formatDateTime, formatGigDate, gigLabelById } from "../_lib/formatters";
+import {
+  artistNameById,
+  formatDateTime,
+  formatGigDate,
+  gigLabelById,
+} from "../_lib/formatters";
+import { logVenueActivity } from "../_lib/activity";
 import StarRatingInput from "./StarRatingInput";
 
 type Props = {
@@ -30,11 +49,29 @@ export default function VenueFeedbackSection({
   const [feedbackContent, setFeedbackContent] = useState("");
   const [feedbackArtistId, setFeedbackArtistId] = useState("");
   const [feedbackGigId, setFeedbackGigId] = useState("");
+  const [viewingFeedbackId, setViewingFeedbackId] = useState<string | null>(null);
+  const [selectedFeedbackIds, setSelectedFeedbackIds] = useState<string[]>([]);
+  const [deletingFeedback, setDeletingFeedback] = useState(false);
 
   const canAddFeedback = useMemo(
     () => feedbackContent.trim().length > 0 && !addingFeedback,
     [feedbackContent, addingFeedback]
   );
+
+  const allSelected =
+    feedbackItems.length > 0 && selectedFeedbackIds.length === feedbackItems.length;
+
+  function toggleSelected(feedbackId: string) {
+    setSelectedFeedbackIds((current) =>
+      current.includes(feedbackId)
+        ? current.filter((id) => id !== feedbackId)
+        : [...current, feedbackId]
+    );
+  }
+
+  function toggleSelectAll() {
+    setSelectedFeedbackIds(allSelected ? [] : feedbackItems.map((item) => item.id));
+  }
 
   async function handleAddFeedback() {
     setAddingFeedback(true);
@@ -82,6 +119,18 @@ export default function VenueFeedbackSection({
       return;
     }
 
+    await logVenueActivity({
+      venue,
+      activityType: "feedback_added",
+      summary: `Added feedback${trimmedType ? ` (${trimmedType})` : ""}.`,
+      metadata: {
+        feedback_type: trimmedType || null,
+        rating: feedbackRating,
+        artist_id: feedbackArtistId || null,
+        gig_id: feedbackGigId || null,
+      },
+    });
+
     setFeedbackType("");
     setFeedbackRating(null);
     setFeedbackContent("");
@@ -93,6 +142,83 @@ export default function VenueFeedbackSection({
     setAddingFeedback(false);
   }
 
+  async function handleDeleteSingle(item: VenueFeedback) {
+    const confirmed = window.confirm("Delete this feedback?");
+    if (!confirmed) return;
+
+    setDeletingFeedback(true);
+
+    const { error } = await supabase.from("venue_feedback").delete().eq("id", item.id);
+
+    if (error) {
+      alert(error.message);
+      setDeletingFeedback(false);
+      return;
+    }
+
+    await logVenueActivity({
+      venue,
+      activityType: "feedback_deleted",
+      summary: `Deleted feedback${item.feedback_type ? ` (${item.feedback_type})` : ""}.`,
+      metadata: {
+        feedback_id: item.id,
+        feedback_type: item.feedback_type,
+        rating: item.rating,
+      },
+    });
+
+    setSelectedFeedbackIds((current) => current.filter((id) => id !== item.id));
+    if (viewingFeedbackId === item.id) {
+      setViewingFeedbackId(null);
+    }
+
+    await onFeedbackChanged();
+    setDeletingFeedback(false);
+  }
+
+  async function handleDeleteSelected() {
+    if (selectedFeedbackIds.length === 0) return;
+
+    const confirmed = window.confirm(
+      `Delete ${selectedFeedbackIds.length} feedback record${selectedFeedbackIds.length === 1 ? "" : "s"}?`
+    );
+    if (!confirmed) return;
+
+    setDeletingFeedback(true);
+
+    const itemsToDelete = feedbackItems.filter((item) => selectedFeedbackIds.includes(item.id));
+
+    const { error } = await supabase
+      .from("venue_feedback")
+      .delete()
+      .in("id", selectedFeedbackIds);
+
+    if (error) {
+      alert(error.message);
+      setDeletingFeedback(false);
+      return;
+    }
+
+    await logVenueActivity({
+      venue,
+      activityType: "feedback_deleted_bulk",
+      summary: `Deleted ${selectedFeedbackIds.length} feedback record${selectedFeedbackIds.length === 1 ? "" : "s"}.`,
+      metadata: {
+        feedback_ids: selectedFeedbackIds,
+        count: selectedFeedbackIds.length,
+        feedback_types: itemsToDelete.map((item) => item.feedback_type).filter(Boolean),
+      },
+    });
+
+    setSelectedFeedbackIds([]);
+    if (viewingFeedbackId && selectedFeedbackIds.includes(viewingFeedbackId)) {
+      setViewingFeedbackId(null);
+    }
+
+    await onFeedbackChanged();
+    setDeletingFeedback(false);
+  }
+
   return (
     <SectionCard title={`Feedback (${feedbackItems.length})`}>
       <div className="flex flex-col gap-4">
@@ -101,75 +227,193 @@ export default function VenueFeedbackSection({
             No feedback yet.
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {feedbackItems.map((item) => {
-              const createdLabel = formatDateTime(item.created_at);
-              const artistName = artistNameById(artists, item.artist_id);
-              const gigLabel = gigLabelById(gigs, item.gig_id);
+          <>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 14,
+                  color: "var(--mutedText)",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                />
+                Select all
+              </label>
 
-              return (
-                <div
-                  key={item.id}
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 12,
-                    padding: 14,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
-                    background: "rgba(255,255,255,0.01)",
-                  }}
+              {selectedFeedbackIds.length > 0 ? (
+                <Button
+                  variant="secondary"
+                  onClick={handleDeleteSelected}
+                  disabled={deletingFeedback}
                 >
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <Trash2 size={16} />
+                    {deletingFeedback
+                      ? "Deleting…"
+                      : `Delete selected (${selectedFeedbackIds.length})`}
+                  </span>
+                </Button>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {feedbackItems.map((item) => {
+                const createdLabel = formatDateTime(item.created_at);
+                const artistName = artistNameById(artists, item.artist_id);
+                const gigLabel = gigLabelById(gigs, item.gig_id);
+                const isExpanded = viewingFeedbackId === item.id;
+                const isSelected = selectedFeedbackIds.includes(item.id);
+
+                return (
                   <div
+                    key={item.id}
                     style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 14,
+                      padding: 16,
                       display: "flex",
-                      justifyContent: "space-between",
+                      flexDirection: "column",
                       gap: 12,
-                      alignItems: "flex-start",
+                      background: isSelected
+                        ? "rgba(255,255,255,0.05)"
+                        : "rgba(255,255,255,0.01)",
                     }}
                   >
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {item.feedback_type ? (
-                        <span style={{ fontSize: 13, fontWeight: 700 }}>
-                          {item.feedback_type}
-                        </span>
-                      ) : null}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 16,
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 12,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                            fontSize: 14,
+                            color: "var(--mutedText)",
+                            paddingTop: 2,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelected(item.id)}
+                          />
+                        </label>
 
-                      {item.rating != null ? (
-                        <span style={{ fontSize: 13, color: "var(--mutedText)" }}>
-                          Rating: {item.rating}/5
-                        </span>
-                      ) : null}
-                    </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {item.feedback_type ? (
+                            <Badge>{item.feedback_type}</Badge>
+                          ) : (
+                            <Badge tone="muted">Feedback</Badge>
+                          )}
 
-                    {createdLabel ? (
-                      <div style={{ fontSize: 12, color: "var(--mutedText)" }}>
-                        {createdLabel}
+                          {item.rating != null ? (
+                            <Badge tone="muted">
+                              <Star size={12} />
+                              {item.rating}/5
+                            </Badge>
+                          ) : null}
+                        </div>
                       </div>
-                    ) : null}
-                  </div>
 
-                  <div style={{ fontSize: 14, lineHeight: 1.5 }}>{item.content}</div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        {createdLabel ? (
+                          <div style={{ fontSize: 12, color: "var(--mutedText)" }}>
+                            {createdLabel}
+                          </div>
+                        ) : null}
 
-                  {artistName || gigLabel ? (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                      {artistName ? (
-                        <div style={{ fontSize: 13, color: "var(--mutedText)" }}>
-                          Artist: {artistName}
-                        </div>
-                      ) : null}
-
-                      {gigLabel ? (
-                        <div style={{ fontSize: 13, color: "var(--mutedText)" }}>
-                          Gig: {gigLabel}
-                        </div>
-                      ) : null}
+                        <ActionTextLink
+                          onClick={() => handleDeleteSingle(item)}
+                          icon={<Trash2 size={15} />}
+                          muted
+                        >
+                          Delete
+                        </ActionTextLink>
+                      </div>
                     </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
+
+                    <div
+                      style={{
+                        fontSize: 14,
+                        lineHeight: 1.6,
+                        color: "var(--text)",
+                      }}
+                    >
+                      {isExpanded || item.content.length <= 220
+                        ? item.content
+                        : `${item.content.slice(0, 220)}…`}
+                    </div>
+
+                    {(artistName || gigLabel) && (
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 10,
+                          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                        }}
+                      >
+                        {artistName ? <InfoTile label="Artist" value={artistName} /> : null}
+                        {gigLabel ? <InfoTile label="Gig" value={gigLabel} /> : null}
+                      </div>
+                    )}
+
+                    <SectionActions>
+                      {item.content.length > 220 ? (
+                        <InlineAction
+                          onClick={() =>
+                            setViewingFeedbackId(isExpanded ? null : item.id)
+                          }
+                        >
+                          {isExpanded ? "Show less" : "View full feedback"}
+                        </InlineAction>
+                      ) : null}
+                    </SectionActions>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-start" }}>
@@ -177,7 +421,10 @@ export default function VenueFeedbackSection({
             variant={showAddForm ? "secondary" : "primary"}
             onClick={() => setShowAddForm((v) => !v)}
           >
-            {showAddForm ? "Cancel" : "Add feedback"}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <MessageSquarePlus size={16} />
+              {showAddForm ? "Cancel" : "Add feedback"}
+            </span>
           </Button>
         </div>
 

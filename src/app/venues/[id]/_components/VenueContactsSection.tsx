@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Mail, Phone, Star, Trash2, Plus, Pencil, X } from "lucide-react";
+import { useMemo, useState, type CSSProperties } from "react";
+import { Menu, Plus, Star, UserRound, X } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import {
   SectionCard,
@@ -9,13 +9,10 @@ import {
   Input,
   Textarea,
   Button,
-  Badge,
-  ActionTextLink,
-  InlineAction,
-  InfoTile,
-  SectionActions,
+  IconButton,
 } from "@/components/ui";
 import type { Venue, VenueContact } from "../_lib/types";
+import { logVenueActivity } from "../_lib/activity";
 
 type Props = {
   venue: Venue;
@@ -32,6 +29,7 @@ export default function VenueContactsSection({
   const [showAddForm, setShowAddForm] = useState(false);
 
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [openContactMenuId, setOpenContactMenuId] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [emailingContact, setEmailingContact] = useState<VenueContact | null>(null);
@@ -54,14 +52,24 @@ export default function VenueContactsSection({
   const [editNotes, setEditNotes] = useState("");
   const [editIsPrimary, setEditIsPrimary] = useState(false);
 
+  const addContactValidationError = useMemo(
+    () => getContactValidationError(contactEmail, contactPhone),
+    [contactEmail, contactPhone]
+  );
+
+  const editContactValidationError = useMemo(
+    () => getContactValidationError(editEmail, editPhone),
+    [editEmail, editPhone]
+  );
+
   const canAddContact = useMemo(
-    () => contactName.trim().length > 0 && !addingContact,
-    [contactName, addingContact]
+    () => contactName.trim().length > 0 && !addingContact && !addContactValidationError,
+    [contactName, addingContact, addContactValidationError]
   );
 
   const canSaveEdit = useMemo(
-    () => editName.trim().length > 0 && !savingEdit,
-    [editName, savingEdit]
+    () => editName.trim().length > 0 && !savingEdit && !editContactValidationError,
+    [editName, savingEdit, editContactValidationError]
   );
 
   const canSendEmail = useMemo(
@@ -73,7 +81,81 @@ export default function VenueContactsSection({
     [emailingContact, emailSubject, emailMessage, sendingEmail]
   );
 
+  function getContactValidationError(email: string, phone: string) {
+    const trimmedEmail = email.trim();
+    const trimmedPhone = phone.trim();
+
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      return "Please enter a valid email address.";
+    }
+
+    if (trimmedPhone && !/^[+()0-9\s.-]{7,}$/.test(trimmedPhone)) {
+      return "Please enter a valid phone number. Use numbers, spaces, +, brackets or hyphens only.";
+    }
+
+    return null;
+  }
+
+  function validateContactFields(email: string, phone: string) {
+    const validationError = getContactValidationError(email, phone);
+
+    if (validationError) {
+      throw new Error(validationError);
+    }
+  }
+
+  function resetAddForm() {
+    setContactName("");
+    setContactRole("");
+    setContactEmail("");
+    setContactPhone("");
+    setContactNotes("");
+    setContactIsPrimary(false);
+  }
+
+  function beginAddContact() {
+    const opening = !showAddForm;
+
+    if (opening) {
+      resetAddForm();
+
+      if (contacts.length === 0) {
+        setContactIsPrimary(true);
+      }
+    }
+
+    setShowAddForm((value) => !value);
+  }
+
+  function setAddPrimaryContact(value: boolean) {
+    if (value && contacts.some((contact) => contact.is_primary)) {
+      const confirmed = window.confirm(
+        "Another venue contact is already primary. Selecting this contact will replace the existing primary contact. Continue?"
+      );
+
+      if (!confirmed) return;
+    }
+
+    setContactIsPrimary(value);
+  }
+
+  function setEditPrimaryContact(value: boolean) {
+    if (
+      value &&
+      contacts.some((contact) => contact.is_primary && contact.id !== editingContactId)
+    ) {
+      const confirmed = window.confirm(
+        "Another venue contact is already primary. Selecting this contact will replace the existing primary contact. Continue?"
+      );
+
+      if (!confirmed) return;
+    }
+
+    setEditIsPrimary(value);
+  }
+
   function beginEdit(contact: VenueContact) {
+    setOpenContactMenuId(null);
     setEditingContactId(contact.id);
     setEditName(contact.name ?? "");
     setEditRole(contact.role ?? "");
@@ -94,6 +176,7 @@ export default function VenueContactsSection({
   }
 
   function openEmailComposer(contact: VenueContact) {
+    setOpenContactMenuId(null);
     setEmailingContact(contact);
     setEmailSubject("");
     setEmailMessage("");
@@ -107,155 +190,232 @@ export default function VenueContactsSection({
     setBccMyself(true);
   }
 
+  async function getCurrentUserId() {
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!user) {
+      throw new Error("You must be signed in.");
+    }
+
+    return user.id;
+  }
+
+  async function clearPrimaryContact(userId: string, excludingContactId?: string) {
+    let query = supabase
+      .from("venue_contacts")
+      .update({ is_primary: false, updated_by: userId })
+      .eq("venue_id", venue.id)
+      .eq("is_primary", true);
+
+    if (excludingContactId) {
+      query = query.neq("id", excludingContactId);
+    }
+
+    const { error } = await query;
+    if (error) throw new Error(error.message);
+  }
+
   async function handleAddContact() {
     setAddingContact(true);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    try {
+      const userId = await getCurrentUserId();
 
-    if (userError) {
-      alert(userError.message);
-      setAddingContact(false);
-      return;
-    }
+      const trimmedName = contactName.trim();
+      const trimmedRole = contactRole.trim();
+      const trimmedEmail = contactEmail.trim();
+      const trimmedPhone = contactPhone.trim();
+      const trimmedNotes = contactNotes.trim();
 
-    if (!user) {
-      alert("You must be signed in to add a contact.");
-      setAddingContact(false);
-      return;
-    }
+      validateContactFields(trimmedEmail, trimmedPhone);
 
-    const trimmedName = contactName.trim();
-    const trimmedRole = contactRole.trim();
-    const trimmedEmail = contactEmail.trim();
-    const trimmedPhone = contactPhone.trim();
-    const trimmedNotes = contactNotes.trim();
-
-    if (!trimmedName) {
-      alert("Contact name is required.");
-      setAddingContact(false);
-      return;
-    }
-
-    if (contactIsPrimary) {
-      const { error: clearPrimaryError } = await supabase
-        .from("venue_contacts")
-        .update({ is_primary: false, updated_by: user.id })
-        .eq("venue_id", venue.id)
-        .eq("is_primary", true);
-
-      if (clearPrimaryError) {
-        alert(clearPrimaryError.message);
+      if (!trimmedName) {
+        alert("Contact name is required.");
         setAddingContact(false);
         return;
       }
-    }
 
-    const { error } = await supabase.from("venue_contacts").insert({
-      agency_id: venue.agency_id,
-      venue_id: venue.id,
-      name: trimmedName,
-      role: trimmedRole || null,
-      email: trimmedEmail || null,
-      phone: trimmedPhone || null,
-      notes: trimmedNotes || null,
-      is_primary: contactIsPrimary,
-      created_by: user.id,
-      updated_by: user.id,
-    });
-
-    if (error) {
-      alert(error.message);
-      setAddingContact(false);
-      return;
-    }
-
-    setContactName("");
-    setContactRole("");
-    setContactEmail("");
-    setContactPhone("");
-    setContactNotes("");
-    setContactIsPrimary(false);
-    setShowAddForm(false);
-
-    await onContactsChanged();
-    setAddingContact(false);
-  }
-
-  async function handleSaveEdit(contactId: string) {
-    setSavingEdit(true);
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError) {
-      alert(userError.message);
-      setSavingEdit(false);
-      return;
-    }
-
-    if (!user) {
-      alert("You must be signed in to edit a contact.");
-      setSavingEdit(false);
-      return;
-    }
-
-    const trimmedName = editName.trim();
-    const trimmedRole = editRole.trim();
-    const trimmedEmail = editEmail.trim();
-    const trimmedPhone = editPhone.trim();
-    const trimmedNotes = editNotes.trim();
-
-    if (!trimmedName) {
-      alert("Contact name is required.");
-      setSavingEdit(false);
-      return;
-    }
-
-    if (editIsPrimary) {
-      const { error: clearPrimaryError } = await supabase
-        .from("venue_contacts")
-        .update({ is_primary: false, updated_by: user.id })
-        .eq("venue_id", venue.id)
-        .neq("id", contactId)
-        .eq("is_primary", true);
-
-      if (clearPrimaryError) {
-        alert(clearPrimaryError.message);
-        setSavingEdit(false);
-        return;
+      if (contactIsPrimary) {
+        await clearPrimaryContact(userId);
       }
-    }
 
-    const { error } = await supabase
-      .from("venue_contacts")
-      .update({
+      const { error } = await supabase.from("venue_contacts").insert({
+        agency_id: venue.agency_id,
+        venue_id: venue.id,
         name: trimmedName,
         role: trimmedRole || null,
         email: trimmedEmail || null,
         phone: trimmedPhone || null,
         notes: trimmedNotes || null,
-        is_primary: editIsPrimary,
-        updated_by: user.id,
-      })
-      .eq("id", contactId);
+        is_primary: contactIsPrimary,
+        created_by: userId,
+        updated_by: userId,
+      });
 
-    if (error) {
-      alert(error.message);
-      setSavingEdit(false);
-      return;
+      if (error) throw new Error(error.message);
+
+      await logVenueActivity({
+        venue,
+        activityType: "contact_added",
+        summary: `Added contact ${trimmedName}${trimmedRole ? ` (${trimmedRole})` : ""}.`,
+        metadata: {
+          name: trimmedName,
+          role: trimmedRole || null,
+          email: trimmedEmail || null,
+          phone: trimmedPhone || null,
+        },
+      });
+
+      window.dispatchEvent(
+        new CustomEvent("activity-log-changed", {
+          detail: { entityType: "venue", entityId: venue.id },
+        })
+      );
+
+      resetAddForm();
+      setShowAddForm(false);
+      await onContactsChanged();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to add contact.");
+    } finally {
+      setAddingContact(false);
     }
+  }
 
-    await onContactsChanged();
-    cancelEdit();
-    setSavingEdit(false);
+  async function handleSaveEdit(contactId: string) {
+    setSavingEdit(true);
+
+    try {
+      const userId = await getCurrentUserId();
+
+      const trimmedName = editName.trim();
+      const trimmedRole = editRole.trim();
+      const trimmedEmail = editEmail.trim();
+      const trimmedPhone = editPhone.trim();
+      const trimmedNotes = editNotes.trim();
+
+      validateContactFields(trimmedEmail, trimmedPhone);
+
+      if (!trimmedName) {
+        alert("Contact name is required.");
+        setSavingEdit(false);
+        return;
+      }
+
+      if (editIsPrimary) {
+        await clearPrimaryContact(userId, contactId);
+      }
+
+      const { error } = await supabase
+        .from("venue_contacts")
+        .update({
+          name: trimmedName,
+          role: trimmedRole || null,
+          email: trimmedEmail || null,
+          phone: trimmedPhone || null,
+          notes: trimmedNotes || null,
+          is_primary: editIsPrimary,
+          updated_by: userId,
+        })
+        .eq("id", contactId);
+
+      if (error) throw new Error(error.message);
+
+      const originalContact = contacts.find((contact) => contact.id === contactId);
+
+      const contactChanges: Array<{
+        field: string;
+        summary: string;
+        from: unknown;
+        to: unknown;
+      }> = [
+        {
+          field: "name",
+          summary: "Contact name updated.",
+          from: originalContact?.name ?? "",
+          to: trimmedName,
+        },
+        {
+          field: "role",
+          summary: "Contact role updated.",
+          from: originalContact?.role ?? "",
+          to: trimmedRole,
+        },
+        {
+          field: "email",
+          summary: "Contact email updated.",
+          from: originalContact?.email ?? "",
+          to: trimmedEmail,
+        },
+        {
+          field: "phone",
+          summary: "Contact phone updated.",
+          from: originalContact?.phone ?? "",
+          to: trimmedPhone,
+        },
+        {
+          field: "notes",
+          summary: "Contact notes updated.",
+          from: originalContact?.notes ?? "",
+          to: trimmedNotes,
+        },
+        {
+          field: "is_primary",
+          summary: editIsPrimary ? "Primary contact changed." : "Primary contact removed.",
+          from: !!originalContact?.is_primary,
+          to: editIsPrimary,
+        },
+      ].filter((change) => change.from !== change.to);
+
+      for (const change of contactChanges) {
+        await logVenueActivity({
+          venue,
+          activityType: "contact_updated",
+          summary: change.summary,
+          metadata: {
+            contact_id: contactId,
+            contact_name: trimmedName,
+            field: change.field,
+            from: change.from,
+            to: change.to,
+          },
+        });
+      }
+
+      if (contactChanges.length > 0) {
+        window.dispatchEvent(
+          new CustomEvent("activity-log-changed", {
+            detail: { entityType: "venue", entityId: venue.id },
+          })
+        );
+      }
+
+      await onContactsChanged();
+      cancelEdit();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to save contact.");
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   async function handleDeleteContact(contactId: string) {
+    const contact = contacts.find((item) => item.id === contactId);
+
+    if (contact?.is_primary) {
+      alert(
+        "You cannot delete the primary venue contact. Assign another primary contact first, or edit this contact and remove the primary role."
+      );
+      return;
+    }
+
     const confirmed = window.confirm("Delete this contact?");
     if (!confirmed) return;
 
@@ -266,6 +426,23 @@ export default function VenueContactsSection({
       return;
     }
 
+    await logVenueActivity({
+      venue,
+      activityType: "contact_deleted",
+      summary: `Deleted contact ${contact?.name ?? "Unknown contact"}.`,
+      metadata: {
+        contact_id: contactId,
+        name: contact?.name ?? null,
+      },
+    });
+
+    window.dispatchEvent(
+      new CustomEvent("activity-log-changed", {
+        detail: { entityType: "venue", entityId: venue.id },
+      })
+    );
+
+    setOpenContactMenuId(null);
     await onContactsChanged();
   }
 
@@ -307,22 +484,13 @@ export default function VenueContactsSection({
         return;
       }
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        alert(userError?.message || "Could not identify current user.");
-        setSendingEmail(false);
-        return;
-      }
+      const userId = await getCurrentUserId();
 
       const { error: insertError } = await supabase.from("contact_emails").insert({
         agency_id: venue.agency_id,
         venue_id: venue.id,
         venue_contact_id: emailingContact.id,
-        actor_id: user.id,
+        actor_id: userId,
         direction: "outbound",
         subject: emailSubject.trim(),
         text_body: emailMessage.trim(),
@@ -343,6 +511,23 @@ export default function VenueContactsSection({
         return;
       }
 
+      await logVenueActivity({
+        venue,
+        activityType: "email_sent",
+        summary: `Sent email to ${emailingContact.name}${emailingContact.email ? ` (${emailingContact.email})` : ""}.`,
+        metadata: {
+          contact_id: emailingContact.id,
+          subject: emailSubject.trim(),
+          resend_email_id: result.resendEmailId,
+        },
+      });
+
+      window.dispatchEvent(
+        new CustomEvent("activity-log-changed", {
+          detail: { entityType: "venue", entityId: venue.id },
+        })
+      );
+
       closeEmailComposer();
       alert("Email sent.");
     } finally {
@@ -352,14 +537,26 @@ export default function VenueContactsSection({
 
   return (
     <>
-      <SectionCard title={`Contacts (${contacts.length})`}>
+      <SectionCard
+        title={`Contacts (${contacts.length})`}
+        actions={
+          <IconButton
+            label={showAddForm ? "Cancel add contact" : "Add contact"}
+            variant={showAddForm ? "secondary" : "primary"}
+            type="button"
+            onClick={beginAddContact}
+          >
+            <Plus size={16} />
+          </IconButton>
+        }
+      >
         <div className="flex flex-col gap-4">
           {contacts.length === 0 ? (
             <div style={{ fontSize: 14, color: "var(--mutedText)" }}>
               No contacts yet.
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
               {contacts.map((contact) => {
                 const isEditing = editingContactId === contact.id;
 
@@ -369,7 +566,7 @@ export default function VenueContactsSection({
                     style={{
                       border: "1px solid var(--border)",
                       borderRadius: 14,
-                      padding: 16,
+                      padding: isEditing ? 16 : "10px 12px",
                       display: "flex",
                       flexDirection: "column",
                       gap: 12,
@@ -379,191 +576,96 @@ export default function VenueContactsSection({
                     }}
                   >
                     {!isEditing ? (
-                      <>
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 16,
-                            alignItems: "flex-start",
-                          }}
-                        >
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 8,
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <div style={{ fontWeight: 700, fontSize: 15 }}>{contact.name}</div>
+                      <div style={rowShellStyle}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                          <div style={contactIconStyle}>
+                            <UserRound size={17} />
 
-                              {contact.is_primary ? (
-                                <Badge>
-                                  <Star size={12} />
-                                  Primary
-                                </Badge>
-                              ) : null}
-                            </div>
-
-                            {contact.role ? (
-                              <div style={{ fontSize: 13, color: "var(--mutedText)" }}>
-                                {contact.role}
-                              </div>
+                            {contact.is_primary ? (
+                              <span title="Primary contact" style={miniBadgeStyle}>
+                                <Star size={10} />
+                              </span>
                             ) : null}
                           </div>
 
-                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                            <ActionTextLink
-                              onClick={() => beginEdit(contact)}
-                              icon={<Pencil size={15} />}
-                              muted
-                            >
-                              Edit
-                            </ActionTextLink>
-
-                            <ActionTextLink
-                              onClick={() => handleDeleteContact(contact.id)}
-                              icon={<Trash2 size={15} />}
-                              muted
-                            >
-                              Delete
-                            </ActionTextLink>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={rowNameStyle}>{contact.name}</div>
+                            {contact.role ? <div style={rowMetaStyle}>{contact.role}</div> : null}
                           </div>
                         </div>
 
-                        {(contact.email || contact.phone) && (
-                          <div
-                            style={{
-                              display: "grid",
-                              gap: 10,
-                              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                            }}
-                          >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOpenContactMenuId(
+                              openContactMenuId === contact.id ? null : contact.id
+                            )
+                          }
+                          style={rowMenuButtonStyle}
+                          aria-label={`Open menu for ${contact.name}`}
+                        >
+                          <Menu size={16} />
+                        </button>
+
+                        {openContactMenuId === contact.id ? (
+                          <div style={menuPanelStyle}>
+                            <button type="button" onClick={() => beginEdit(contact)} style={menuButtonStyle}>
+                              Edit
+                            </button>
+
                             {contact.email ? (
-                              <InfoTile
-                                label="Email"
-                                value={contact.email}
-                                action={
-                                  <ActionTextLink
-                                    onClick={() => openEmailComposer(contact)}
-                                    icon={<Mail size={15} />}
-                                  >
-                                    Email
-                                  </ActionTextLink>
-                                }
-                              />
+                              <button
+                                type="button"
+                                onClick={() => openEmailComposer(contact)}
+                                style={menuButtonStyle}
+                              >
+                                Email
+                              </button>
                             ) : null}
 
                             {contact.phone ? (
-                              <InfoTile
-                                label="Phone"
-                                value={contact.phone}
-                                action={
-                                  <ActionTextLink
-                                    href={`tel:${contact.phone}`}
-                                    icon={<Phone size={15} />}
-                                  >
-                                    Call
-                                  </ActionTextLink>
-                                }
-                              />
+                              <a href={`tel:${contact.phone}`} style={menuLinkStyle}>
+                                Call
+                              </a>
                             ) : null}
-                          </div>
-                        )}
 
-                        {contact.notes ? (
-                          <div
-                            style={{
-                              fontSize: 14,
-                              color: "var(--mutedText)",
-                              lineHeight: 1.5,
-                            }}
-                          >
-                            {contact.notes}
+                            <button type="button" disabled style={disabledMenuButtonStyle}>
+                              Log email
+                            </button>
+
+                            <button type="button" disabled style={disabledMenuButtonStyle}>
+                              Log call
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteContact(contact.id)}
+                              style={menuButtonStyle}
+                            >
+                              Delete
+                            </button>
                           </div>
                         ) : null}
-
-                        <SectionActions>
-                          {contact.email ? (
-                            <InlineAction onClick={() => openEmailComposer(contact)}>
-                              Send email
-                            </InlineAction>
-                          ) : null}
-
-                          {contact.phone ? (
-                            <ActionTextLink href={`tel:${contact.phone}`}>Make call</ActionTextLink>
-                          ) : null}
-
-                          <InlineAction muted>Log email</InlineAction>
-                          <InlineAction muted>Log call</InlineAction>
-                        </SectionActions>
-                      </>
+                      </div>
                     ) : (
                       <>
                         <div style={{ fontWeight: 700, fontSize: 15 }}>Edit contact</div>
 
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <Field label="Name" required>
-                            <Input
-                              value={editName}
-                              onChange={(e) => setEditName(e.target.value)}
-                              placeholder="Contact name"
-                            />
-                          </Field>
-
-                          <Field label="Role">
-                            <Input
-                              value={editRole}
-                              onChange={(e) => setEditRole(e.target.value)}
-                              placeholder="Booker, promoter, production…"
-                            />
-                          </Field>
-
-                          <Field label="Email">
-                            <Input
-                              value={editEmail}
-                              onChange={(e) => setEditEmail(e.target.value)}
-                              placeholder="Email"
-                            />
-                          </Field>
-
-                          <Field label="Phone">
-                            <Input
-                              value={editPhone}
-                              onChange={(e) => setEditPhone(e.target.value)}
-                              placeholder="Phone"
-                            />
-                          </Field>
-                        </div>
-
-                        <Field label="Notes">
-                          <Textarea
-                            value={editNotes}
-                            onChange={(e) => setEditNotes(e.target.value)}
-                            placeholder="Notes about this contact"
-                            style={{ minHeight: 100, resize: "vertical" }}
-                          />
-                        </Field>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                          }}
-                        >
-                          <input
-                            id={`edit-primary-${contact.id}`}
-                            type="checkbox"
-                            checked={editIsPrimary}
-                            onChange={(e) => setEditIsPrimary(e.target.checked)}
-                          />
-                          <label htmlFor={`edit-primary-${contact.id}`} style={{ fontSize: 14 }}>
-                            Set as primary contact
-                          </label>
-                        </div>
+                        <ContactFormFields
+                          name={editName}
+                          setName={setEditName}
+                          role={editRole}
+                          setRole={setEditRole}
+                          email={editEmail}
+                          setEmail={setEditEmail}
+                          phone={editPhone}
+                          setPhone={setEditPhone}
+                          notes={editNotes}
+                          setNotes={setEditNotes}
+                          isPrimary={editIsPrimary}
+                          setIsPrimary={setEditPrimaryContact}
+                          validationError={editContactValidationError}
+                        />
 
                         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                           <Button
@@ -585,18 +687,6 @@ export default function VenueContactsSection({
             </div>
           )}
 
-          <div style={{ display: "flex", justifyContent: "flex-start" }}>
-            <Button
-              variant={showAddForm ? "secondary" : "primary"}
-              onClick={() => setShowAddForm((v) => !v)}
-            >
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <Plus size={16} />
-                {showAddForm ? "Cancel" : "Add contact"}
-              </span>
-            </Button>
-          </div>
-
           {showAddForm ? (
             <div
               style={{
@@ -604,69 +694,21 @@ export default function VenueContactsSection({
                 paddingTop: 16,
               }}
             >
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Name" required>
-                  <Input
-                    value={contactName}
-                    onChange={(e) => setContactName(e.target.value)}
-                    placeholder="Contact name"
-                  />
-                </Field>
-
-                <Field label="Role">
-                  <Input
-                    value={contactRole}
-                    onChange={(e) => setContactRole(e.target.value)}
-                    placeholder="Booker, promoter, production…"
-                  />
-                </Field>
-
-                <Field label="Email">
-                  <Input
-                    value={contactEmail}
-                    onChange={(e) => setContactEmail(e.target.value)}
-                    placeholder="Email"
-                  />
-                </Field>
-
-                <Field label="Phone">
-                  <Input
-                    value={contactPhone}
-                    onChange={(e) => setContactPhone(e.target.value)}
-                    placeholder="Phone"
-                  />
-                </Field>
-              </div>
-
-              <div style={{ marginTop: 16 }}>
-                <Field label="Notes">
-                  <Textarea
-                    value={contactNotes}
-                    onChange={(e) => setContactNotes(e.target.value)}
-                    placeholder="Notes about this contact"
-                    style={{ minHeight: 100, resize: "vertical" }}
-                  />
-                </Field>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginTop: 16,
-                }}
-              >
-                <input
-                  id="is-primary-contact"
-                  type="checkbox"
-                  checked={contactIsPrimary}
-                  onChange={(e) => setContactIsPrimary(e.target.checked)}
-                />
-                <label htmlFor="is-primary-contact" style={{ fontSize: 14 }}>
-                  Set as primary contact
-                </label>
-              </div>
+              <ContactFormFields
+                name={contactName}
+                setName={setContactName}
+                role={contactRole}
+                setRole={setContactRole}
+                email={contactEmail}
+                setEmail={setContactEmail}
+                phone={contactPhone}
+                setPhone={setContactPhone}
+                notes={contactNotes}
+                setNotes={setContactNotes}
+                isPrimary={contactIsPrimary}
+                setIsPrimary={setAddPrimaryContact}
+                validationError={addContactValidationError}
+              />
 
               <div style={{ marginTop: 16 }}>
                 <Button onClick={handleAddContact} disabled={!canAddContact}>
@@ -679,42 +721,9 @@ export default function VenueContactsSection({
       </SectionCard>
 
       {emailingContact ? (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.55)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 20,
-            zIndex: 1000,
-          }}
-          onClick={closeEmailComposer}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "100%",
-              maxWidth: 680,
-              border: "1px solid var(--border)",
-              borderRadius: 16,
-              background: "var(--panel)",
-              padding: 20,
-              display: "flex",
-              flexDirection: "column",
-              gap: 16,
-              boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 12,
-              }}
-            >
+        <div style={modalOverlayStyle} onClick={closeEmailComposer}>
+          <div onClick={(e) => e.stopPropagation()} style={modalPanelStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div>
                 <div style={{ fontSize: 18, fontWeight: 800 }}>Send email</div>
                 <div style={{ fontSize: 13, color: "var(--mutedText)", marginTop: 4 }}>
@@ -723,17 +732,7 @@ export default function VenueContactsSection({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={closeEmailComposer}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--mutedText)",
-                }}
-                title="Close"
-              >
+              <button type="button" onClick={closeEmailComposer} style={closeButtonStyle} title="Close">
                 <X size={18} />
               </button>
             </div>
@@ -755,23 +754,14 @@ export default function VenueContactsSection({
               />
             </Field>
 
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
               <input
-                id="bcc-myself"
                 type="checkbox"
                 checked={bccMyself}
                 onChange={(e) => setBccMyself(e.target.checked)}
               />
-              <label htmlFor="bcc-myself" style={{ fontSize: 14 }}>
-                BCC myself
-              </label>
-            </div>
+              BCC myself
+            </label>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <Button onClick={handleSendEmail} disabled={!canSendEmail}>
@@ -788,3 +778,232 @@ export default function VenueContactsSection({
     </>
   );
 }
+
+function ContactFormFields({
+  name,
+  setName,
+  role,
+  setRole,
+  email,
+  setEmail,
+  phone,
+  setPhone,
+  notes,
+  setNotes,
+  isPrimary,
+  setIsPrimary,
+  validationError,
+}: {
+  name: string;
+  setName: (value: string) => void;
+  role: string;
+  setRole: (value: string) => void;
+  email: string;
+  setEmail: (value: string) => void;
+  phone: string;
+  setPhone: (value: string) => void;
+  notes: string;
+  setNotes: (value: string) => void;
+  isPrimary: boolean;
+  setIsPrimary: (value: boolean) => void;
+  validationError: string | null;
+}) {
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Name" required>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Contact name"
+          />
+        </Field>
+
+        <Field label="Role">
+          <Input
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            placeholder="Booker, promoter, production…"
+          />
+        </Field>
+
+        <Field label="Email">
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email"
+          />
+        </Field>
+
+        <Field label="Phone">
+          <Input
+            type="tel"
+            inputMode="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="Phone"
+          />
+        </Field>
+      </div>
+
+      {validationError ? (
+        <div style={{ color: "#ffb4ab", fontSize: 13 }}>
+          {validationError}
+        </div>
+      ) : null}
+
+      <Field label="Notes">
+        <Textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Notes about this contact"
+          style={{ minHeight: 100, resize: "vertical" }}
+        />
+      </Field>
+
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+        <input
+          type="checkbox"
+          checked={isPrimary}
+          onChange={(e) => setIsPrimary(e.target.checked)}
+        />
+        Primary venue contact
+      </label>
+    </div>
+  );
+}
+
+const rowShellStyle: CSSProperties = {
+  position: "relative",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const contactIconStyle: CSSProperties = {
+  position: "relative",
+  width: 34,
+  height: 34,
+  borderRadius: 999,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid var(--border)",
+  flex: "0 0 auto",
+};
+
+const miniBadgeStyle: CSSProperties = {
+  position: "absolute",
+  right: -5,
+  bottom: -5,
+  width: 16,
+  height: 16,
+  borderRadius: 999,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "rgba(18,18,22,0.96)",
+  border: "1px solid var(--border)",
+  color: "var(--text)",
+};
+
+const rowNameStyle: CSSProperties = {
+  fontWeight: 700,
+  fontSize: 15,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const rowMetaStyle: CSSProperties = {
+  fontSize: 12,
+  color: "var(--mutedText)",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const rowMenuButtonStyle: CSSProperties = {
+  border: "1px solid var(--border)",
+  background: "rgba(255,255,255,0.03)",
+  color: "var(--text)",
+  borderRadius: 999,
+  width: 32,
+  height: 32,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+  flex: "0 0 auto",
+};
+
+const menuPanelStyle: CSSProperties = {
+  position: "absolute",
+  right: 0,
+  top: 40,
+  zIndex: 10,
+  minWidth: 150,
+  borderRadius: 12,
+  border: "1px solid var(--border)",
+  background: "rgba(18,18,22,0.98)",
+  boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
+  padding: 6,
+  display: "grid",
+  gap: 4,
+};
+
+const menuButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "var(--text)",
+  textAlign: "left",
+  padding: "8px 10px",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 13,
+};
+
+const disabledMenuButtonStyle: CSSProperties = {
+  ...menuButtonStyle,
+  color: "var(--mutedText)",
+  cursor: "not-allowed",
+};
+
+const menuLinkStyle: CSSProperties = {
+  ...menuButtonStyle,
+  textDecoration: "none",
+};
+
+const modalOverlayStyle: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,0.72)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 20,
+  zIndex: 1000,
+};
+
+const modalPanelStyle: CSSProperties = {
+  width: "100%",
+  maxWidth: 680,
+  border: "1px solid var(--border)",
+  borderRadius: 16,
+  background: "var(--panel, rgba(24,24,28,0.98))",
+  padding: 20,
+  display: "flex",
+  flexDirection: "column",
+  gap: 16,
+  boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
+};
+
+const closeButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  color: "var(--mutedText)",
+};

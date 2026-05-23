@@ -1,7 +1,7 @@
 # Mosaic App — Database Schema (Public)
 
-Last updated: 2026-03-11  
-Source: information_schema.columns (public schema) and verified foreign key constraints
+Last updated: 2026-04-25  
+Source: information_schema.columns + FK + PK exports
 
 ---
 
@@ -9,243 +9,169 @@ Source: information_schema.columns (public schema) and verified foreign key cons
 
 This document is the canonical source of truth for all database fields.
 
-When building or updating an application UI page (for example venues/[id], artists/[id], or gigs/[id]):
+When building or updating UI pages:
 
-1. Developers must reference this document.
-2. Every column relevant to user input or display should be considered for inclusion in the UI.
-3. No UI form should omit database fields unintentionally.
-
-If a field is intentionally excluded from the UI, the reason should be documented in the page code.
+1. Always reference this document
+2. Consider every column for inclusion
+3. Do not omit fields unintentionally
+4. Document any intentional exclusions in code
 
 ---
 
+# Core Tables
+
 ## agencies
-Purpose: A tenant (music agency). Used for multi‑tenancy and theming.
+Purpose: Tenant (music agency)
 
 Primary key
-- id (uuid, not null)
+- id
 
 Columns
 - id (uuid, not null)
 - name (text, not null)
 - created_at (timestamptz, not null)
 - theme_preset (text, not null)
-- logo_url (text, nullable)
+- logo_url (text)
 
-Relationships (verified foreign keys)
-
-- Referenced by artists.agency_id
-- Referenced by venues.agency_id
-- Referenced by gigs.agency_id
-- Referenced by agency_memberships.agency_id
-- Referenced by agency_invitations.agency_id
-
----
-
-## agency_invitations
-Purpose: Invite users to join an agency with a role.
-
-Primary key
-- id (uuid, not null)
-
-Columns
-- id (uuid, not null)
-- agency_id (uuid, not null)
-- email (user-defined, not null)
-- role (text, not null)
-- token_hash (bytea, not null)
-- invited_by (uuid, not null)
-- expires_at (timestamptz, not null)
-- accepted_at (timestamptz, nullable)
-- accepted_by (uuid, nullable)
-- created_at (timestamptz, not null)
-
-Relationships (verified foreign keys)
-
-- agency_invitations.agency_id → agencies.id
-
-Reference columns (not currently FK‑enforced)
-
-- agency_invitations.invited_by → profiles.id (application convention)
-- agency_invitations.accepted_by → profiles.id (application convention)
-
----
-
-## agency_memberships
-Purpose: Join table linking users to agencies and roles.
-
-Primary key
-- composite (agency_id, user_id)
-
-Columns
-- agency_id (uuid, not null)
-- user_id (uuid, not null)
-- role (text, not null)
-- created_at (timestamptz, not null)
-
-Relationships (verified foreign keys)
-
-- agency_memberships.agency_id → agencies.id
-
-Reference columns (not currently FK‑enforced)
-
-- agency_memberships.user_id → profiles.id (application convention)
+Relationships
+- Referenced by artists, venues, gigs, agency_memberships, agency_invitations
 
 ---
 
 ## profiles
-Purpose: Per‑user profile information extending Supabase auth users.
+Purpose: User profile (extends auth)
 
 Primary key
-- id (uuid, not null)
+- id
 
 Columns
-- id (uuid, not null)
-- display_name (text, nullable)
-- is_super_user (boolean, not null)
-- created_at (timestamptz, not null)
-
-Notes
-
-- display_name is currently the only human‑friendly user name field.
-- UI should fall back to a neutral placeholder if display_name is null.
-
-Referenced by (application convention)
-
-- agency_memberships.user_id
-- venues.created_by
-- venues.updated_by
-- venues.record_owner_id
-- agency_invitations.invited_by
-- agency_invitations.accepted_by
-- gigs.created_by
+- id (uuid)
+- display_name (text)
+- is_super_user (boolean)
+- created_at (timestamptz)
 
 ---
 
-## artists
-Purpose: Artists or bands managed by an agency.
+## agency_memberships
+Purpose: Users ↔ agencies
 
 Primary key
-- id (uuid, not null)
+- (agency_id, user_id)
 
 Columns
-- id (uuid, not null)
-- agency_id (uuid, not null)
-- name (text, not null)
-- genre (text, nullable)
-- contact_email (text, nullable)
-- notes (text, nullable)
-- image_url (text, nullable)
-- status (text, not null)
-- created_at (timestamptz, not null)
-- updated_at (timestamptz, not null)
+- agency_id
+- user_id
+- role
+- created_at
 
-Relationships (verified foreign keys)
+---
 
-- artists.agency_id → agencies.id
+## agency_invitations
+Purpose: Invite users
 
-Referenced by
+Primary key
+- id
 
-- gigs.artist_id
+Columns
+- id
+- agency_id
+- email
+- role
+- token_hash
+- invited_by
+- expires_at
+- accepted_at
+- accepted_by
+- created_at
 
-### UI Fields (Artist Editor)
+---
 
-Editable fields
+# Artists
 
+## artists
+Purpose: Artists / bands
+
+Primary key
+- id
+
+Columns
+- id
+- agency_id
 - name
 - genre
 - contact_email
-- status
-- image_url
 - notes
-
-System / metadata fields
-
+- image_url
+- banner_position_x
+- banner_position_y
+- banner_zoom
+- status
 - created_at
 - updated_at
 
+Relationships
+- artists.agency_id → agencies.id
+- Referenced by gigs
+
 ---
 
+# Venues
+
 ## venues
-Purpose: Venues managed by an agency.
+Purpose: Venues
 
 Primary key
-- id (uuid, not null)
+- id
 
 Columns
-- id (uuid, not null)
-- agency_id (uuid, not null)
-- name (text, not null)
-- city (text, nullable)
-- country (text, nullable)
-- capacity (integer, nullable)
-- website (text, nullable)
-- notes (text, nullable)
-- created_at (timestamptz, not null)
-- created_by (uuid, nullable)
-- updated_by (uuid, nullable)
-- record_owner_id (uuid, nullable)
-- updated_at (timestamptz, not null)
-- latitude numeric
-- longitude numeric
-- google_maps_url text
-- google_place_id text
-
-Above 4 fields support routing, mapping and tour planning.
-
-Relationships (verified foreign keys)
-
-- venues.agency_id → agencies.id
-
-Referenced by
-
-- venue_contacts.venue_id
-- venue_feedback.venue_id
-- venue_activity.venue_id
-- gigs.venue_id
-
-Reference columns (not currently FK‑enforced)
-
-- venues.created_by → profiles.id (application convention)
-- venues.updated_by → profiles.id (application convention)
-- venues.record_owner_id → profiles.id (application convention)
-
-Notes
-
-- Address fields and map coordinates are not currently present in the schema.
-- These would need to be added via migration before appearing in the UI.
-
-### UI Fields (Venue Editor)
-
-Editable fields
-
+- - id
+- agency_id
 - name
 - city
 - country
 - capacity
 - website
 - notes
-- record_owner_id
-
-System / metadata fields
-
 - created_at
 - created_by
-- updated_at
 - updated_by
+- record_owner_id
+- updated_at
+- latitude
+- longitude
+- google_maps_url
+- google_place_id
+- address_line1 *
+- address_line2 *
+- region
+- postcode *
+- status
+- display_address
+
+Note: Columns marked * have been retired in favour of the single column "display_address"
+* display_address is the primary user-facing address
+* city, postcode, country are retired (potentially secondary/search metadata)
+* google_maps_url is the preferred canonical location reference
+* region is a tag, not a postal field
+* /venues cards show city/country only, but search includes display address
+
+Relationships
+- venues.agency_id → agencies.id
+- Referenced by:
+  - venue_contacts
+  - venue_feedback
+  - venue_activity
+  - gigs
 
 ---
 
 ## venue_contacts
-
-Purpose: People associated with a venue (bookers, promoters, production, etc.)
+Purpose: Contacts for venues
 
 Primary key
-
-- id (uuid)
+- id
 
 Columns
-
 - id
 - agency_id
 - venue_id
@@ -260,28 +186,19 @@ Columns
 - created_by
 - updated_by
 
-Relationships (verified foreign keys)
-
+Relationships
 - venue_contacts.agency_id → agencies.id
 - venue_contacts.venue_id → venues.id
-
-Reference columns (not FK-enforced)
-
-- venue_contacts.created_by → profiles.id
-- venue_contacts.updated_by → profiles.id
 
 ---
 
 ## venue_feedback
-
-Purpose: Operational knowledge and feedback about venues from gigs or agents.
+Purpose: Feedback on venues
 
 Primary key
-
-- id (uuid)
+- id
 
 Columns
-
 - id
 - agency_id
 - venue_id
@@ -294,29 +211,21 @@ Columns
 - created_at
 - updated_at
 
-Relationships (verified foreign keys)
-
+Relationships
 - venue_feedback.agency_id → agencies.id
 - venue_feedback.venue_id → venues.id
 - venue_feedback.gig_id → gigs.id
 - venue_feedback.artist_id → artists.id
 
-Reference columns (not FK-enforced)
-
-- venue_feedback.author_id → profiles.id
-
 ---
 
 ## venue_activity
-
-Purpose: Timeline of actions related to a venue.
+Purpose: Timeline of venue actions
 
 Primary key
-
-- id (uuid)
+- id
 
 Columns
-
 - id
 - agency_id
 - venue_id
@@ -326,106 +235,194 @@ Columns
 - metadata
 - created_at
 
-Relationships (verified foreign keys)
-
+Relationships
 - venue_activity.agency_id → agencies.id
 - venue_activity.venue_id → venues.id
 
-Reference columns (not FK-enforced)
+---
 
-- venue_activity.actor_id → profiles.id
+# Gigs
 
 ## gigs
-Purpose: Gigs or shows for artists.
+Purpose: Shows / bookings
 
 Primary key
-- id (uuid, not null)
+- id
 
 Columns
-- id (uuid, not null)
-- agency_id (uuid, not null)
-- artist_id (uuid, not null)
-- title (text, not null)
-- venue (text, nullable)
-- city (text, nullable)
-- starts_at (timestamptz, not null)
-- status (text, not null)
-- fee_cents (integer, not null)
-- notes (text, nullable)
-- venue_id (uuid, nullable)
-- created_at (timestamptz, not null)
-- created_by (uuid, nullable)
-- updated_at (timestamptz, not null)
-
-Relationships (verified foreign keys)
-
-- gigs.agency_id → agencies.id
-- gigs.artist_id → artists.id
-- gigs.venue_id → venues.id
-
-Reference columns (not currently FK‑enforced)
-
-- gigs.created_by → profiles.id (application convention)
-
-### UI Fields (Gig Editor)
-
-Editable fields
-
-- title
+- id
+- agency_id
 - artist_id
-- venue_id
+- title
 - venue
 - city
 - starts_at
 - status
 - fee_cents
 - notes
-
-System / metadata fields
-
+- venue_id
 - created_at
 - created_by
 - updated_at
 
----
-
-# Cross‑table conventions
-
-Multi‑tenancy
-
-- agency_id appears on most application tables to enforce tenant isolation.
-
-Audit / provenance
-
-- updated_at exists on artists, venues, and gigs.
-- venues also includes created_by, updated_by, and record_owner_id.
-
-Display names
-
-- profiles.display_name is the only human‑readable user identifier.
+Relationships
+- gigs.agency_id → agencies.id
+- gigs.artist_id → artists.id
+- gigs.venue_id → venues.id
 
 ---
 
-# Entity Relationship Overview
+# Emerging CRM Layer
 
-agencies
-│
-├── artists
-│       └── gigs
-│
-├── venues
-│       └── gigs
-│
-├── agency_memberships
-│       └── profiles
-│
-└── agency_invitations
-        └── profiles (via invited_by / accepted_by)
+## contact_calls
+Purpose: Logged calls (new)
+
+Primary key
+- id
+
+Columns (inferred from schema)
+- id
+- agency_id
+- actor_id
+- (additional fields likely present)
+
+Relationships
+- contact_calls.agency_id → agencies.id
+- contact_calls.actor_id → profiles.id
 
 ---
 
-# See also
+# Cross-table Conventions
 
-Database behavioural architecture (Auth, RLS, RPCs, triggers, grants):
+## Multi-tenancy
+- agency_id on all domain tables
 
-docs/db/auth-rls-rpcs.md
+## Audit
+- created_at, updated_at
+- created_by, updated_by (where applicable)
+
+## UI identifiers
+- profiles.display_name is the only human-readable user name
+
+## Portal access model
+
+External people such as band members and venue contacts are CRM contacts first.
+
+Some may later receive authenticated portal access, but they should not become agency users and should not be added to `agency_memberships`.
+
+Portal access should be scoped narrowly:
+- artist members → their artist/band only
+- venue contacts → their venue only
+
+---
+
+# Entity Overview
+
+agencies  
+├── artists  
+│   └── gigs  
+│  
+├── venues  
+│   ├── venue_contacts  
+│   ├── venue_feedback  
+│   ├── venue_activity  
+│   └── gigs  
+│  
+├── agency_memberships → profiles  
+└── agency_invitations → profiles  
+
+---
+
+# Notes / Observations
+
+### 1. Banner system (NEW)
+Artists now support:
+- zoom
+- horizontal focus
+- vertical focus
+
+### 2. CRM direction emerging
+You now have:
+- venue_contacts
+- contact_calls
+- venue_activity
+- venue_feedback
+
+👉 This is effectively a **CRM system forming organically**
+
+### 3. Missing concept (important for next step)
+There is currently **NO artist_members table**.
+
+Artist members should be treated as CRM-style contacts attached to an artist/band.
+
+Direction of travel:
+- agents can email all band members with gig details
+- agents can notify all band members when a gig changes
+- agents can request approval from a designated band member for purchases
+- agents can request approval from a designated band member for content/artwork/marketing announcements
+- most bands should be able to nominate one consistent approver to avoid over-communicating with every member
+
+This is exactly what we need to design next.
+
+---
+
+# Next Schema Step (Recommended)
+
+```sql
+create table artist_members (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid not null references agencies(id),
+  artist_id uuid not null references artists(id),
+  profile_id uuid references profiles(id),
+  name text not null,
+  role text,
+  email text,
+  phone text,
+  notes text,
+  is_primary boolean not null default false,
+  receives_gig_notifications boolean not null default true,
+  is_default_approver boolean not null default false,
+  approval_notes text,
+  portal_enabled boolean not null default false,
+  portal_invited_at timestamptz,
+  portal_last_seen_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid references profiles(id),
+  updated_by uuid references profiles(id)
+);
+```
+
+## Venue Contact Portal Direction
+
+Venue contacts may later receive limited authenticated portal access for venue-specific workflows.
+
+Potential workflows:
+- accept / confirm venue bookings
+- view upcoming gigs at their venue
+- manage venue availability
+- support future venue calendar outsourcing / booking-agent services
+
+Future fields likely needed on `venue_contacts`:
+- profile_id
+- portal_enabled
+- portal_invited_at
+- portal_last_seen_at
+- can_confirm_bookings
+- can_manage_availability
+- can_view_venue_calendar
+
+## Future Workflow Tables (Likely)
+
+Artist members and venue contacts provide the contact layer. Workflow should be modelled separately.
+
+Likely future workflow tables:
+- artist_member_notifications
+- artist_approval_requests
+- artist_approval_responses
+- venue_booking_confirmations
+- venue_availability_blocks
+- venue_booking_requests
+- venue_calendar_shares
+
+Do not overload `artist_members` or `venue_contacts` with every communication, booking, availability, or approval event. Keep contact tables focused on identity, contact details, standing preferences, and portal access flags.

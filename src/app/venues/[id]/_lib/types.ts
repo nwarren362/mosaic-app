@@ -2,8 +2,14 @@ export type Venue = {
   id: string;
   agency_id: string;
   name: string;
+  display_address: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
   city: string | null;
+  postcode: string | null;
+  status: string | null;
   country: string | null;
+  region: string | null;
   capacity: number | null;
   website: string | null;
   notes: string | null;
@@ -67,4 +73,15 @@ export type VenueFeedback = {
   content: string;
   created_at: string;
   updated_at: string;
+};
+
+export type VenueActivity = {
+  id: string;
+  agency_id: string;
+  venue_id: string;
+  actor_id: string | null;
+  activity_type: string;
+  summary: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
 };

@@ -44,10 +44,14 @@ export function SectionCard({
   title,
   children,
   className = "",
+  controls,
+  actions,
 }: {
   title: string;
   children: React.ReactNode;
   className?: string;
+  controls?: React.ReactNode;
+  actions?: React.ReactNode;
 }) {
   return (
     <Card
@@ -55,7 +59,7 @@ export function SectionCard({
       style={{
         border: "1px solid var(--border)",
         borderRadius: 16,
-        overflow: "hidden",
+        overflow: "visible",
       }}
     >
       <div
@@ -63,12 +67,37 @@ export function SectionCard({
           padding: "12px 16px",
           borderBottom: "1px solid var(--border)",
           background: "rgba(255,255,255,0.02)",
-          fontSize: 14,
-          fontWeight: 700,
-          letterSpacing: 0.2,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
         }}
       >
-        {title}
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            letterSpacing: 0.2,
+          }}
+        >
+          {title}
+        </div>
+
+        {(controls || actions) && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            {controls}
+            {actions}
+          </div>
+        )}
       </div>
 
       <div style={{ padding: 16 }}>{children}</div>
@@ -127,6 +156,96 @@ export function Button({
     >
       {children}
     </button>
+  );
+}
+
+export function IconButton({
+  children,
+  label,
+  variant = "secondary",
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  children: React.ReactNode;
+  label: string;
+  variant?: ButtonVariant;
+}) {
+  return (
+    <Button
+      {...props}
+      variant={variant}
+      aria-label={label}
+      title={label}
+      style={{
+        width: 34,
+        height: 34,
+        minWidth: 34,
+        padding: 0,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 999,
+        ...props.style,
+      }}
+    >
+      {children}
+    </Button>
+  );
+}
+
+export function SegmentedControl<T extends string>({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}: {
+  value: T;
+  options: Array<{ label: string; value: T }>;
+  onChange: (value: T) => void;
+  ariaLabel?: string;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 2,
+        padding: 3,
+        border: "1px solid var(--border)",
+        borderRadius: 999,
+        background: "rgba(255,255,255,0.03)",
+      }}
+    >
+      {options.map((option) => {
+        const selected = option.value === value;
+
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(option.value)}
+            style={{
+              border: "none",
+              borderRadius: 999,
+              padding: "6px 10px",
+              minHeight: 28,
+              background: selected ? "var(--primary)" : "transparent",
+              color: selected ? "#fff" : "var(--mutedText)",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              transition: "var(--transition-fast)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -298,6 +417,107 @@ export function Badge({
     >
       {children}
     </span>
+  );
+}
+
+export function StatusBadge({
+  children,
+  tone = "muted",
+}: {
+  children: React.ReactNode;
+  tone?: "success" | "warning" | "danger" | "muted";
+}) {
+  const tones = {
+    success: {
+      background: "rgba(34,197,94,0.12)",
+      border: "rgba(34,197,94,0.22)",
+      color: "rgba(134,239,172,0.95)",
+    },
+    warning: {
+      background: "rgba(234,179,8,0.12)",
+      border: "rgba(234,179,8,0.22)",
+      color: "rgba(253,230,138,0.95)",
+    },
+    danger: {
+      background: "rgba(239,68,68,0.12)",
+      border: "rgba(239,68,68,0.22)",
+      color: "rgba(254,202,202,0.95)",
+    },
+    muted: {
+      background: "rgba(148,163,184,0.10)",
+      border: "rgba(255,255,255,0.14)",
+      color: "rgba(203,213,225,0.95)",
+    },
+  } as const;
+
+  const t = tones[tone];
+
+  return (
+    <span
+      style={{
+        padding: "4px 10px",
+        borderRadius: 999,
+        border: `1px solid ${t.border}`,
+        background: t.background,
+        color: t.color,
+        fontWeight: 900,
+        fontSize: 12,
+        textTransform: "uppercase",
+        letterSpacing: 0.6,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function StatTile({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-lg)",
+        background: "rgba(255,255,255,0.03)",
+        padding: "14px 14px",
+        boxShadow: "var(--shadow-soft)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          color: "var(--mutedText)",
+          letterSpacing: 0.4,
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: 6,
+          fontSize: 26,
+          fontWeight: 900,
+          letterSpacing: -0.6,
+          color: "var(--text)",
+        }}
+      >
+        {value}
+      </div>
+      {hint ? (
+        <div style={{ marginTop: 4, fontSize: 12, color: "var(--mutedText)" }}>
+          {hint}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

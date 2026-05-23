@@ -1,119 +1,252 @@
 # UI System – Mosaic App
 
-## Philosophy
+## Purpose
 
-Mosaic uses a custom UI system designed for:
+This document defines how UI should be **designed, structured, and implemented** in Mosaic.
 
-- Long-term maintainability
-- Tenant (agency) specific branding
-- Centralised control of visual tokens
-- Rapid global visual changes
+It combines:
+- **Design principles** (how it should feel)
+- **Architecture rules** (how it should be built)
 
-No page should directly style raw HTML elements.
-
-All UI must flow through the system.
+The goal:
+👉 Consistent, scalable UI that is easy to build and easy to use
 
 ---
 
-## Structure
+## Core Principles
 
-### Global Styling
-- `src/app/globals.css`
-  - Defines design tokens (colors, spacing, radius, etc.)
-  - Defines dark theme foundation
+1. **Consistency over creativity**
+   - Reuse patterns everywhere
+   - Do not invent new UI patterns per page
 
-### Theme Presets
-- `src/lib/themePresets.ts`
-  - Defines tenant-specific theme overrides
-  - Enables per-agency branding
+2. **Hierarchy first**
+   - Users must instantly understand what matters
+   - Prefer progressive disclosure over cluttered forms
 
-### Theme Provider
-- `src/app/providers.tsx`
-  - Injects active theme into application
-  - Applies theme variables at runtime
+3. **Action clarity**
+   - Primary actions are obvious
+   - Secondary actions are quieter
+   - Destructive actions are controlled
+
+4. **Mobile-first always**
+   - Everything must work comfortably on a phone
+
+---
+
+## Technical Architecture (for developers)
+
+### Styling System
+- Global styles: `src/app/globals.css`
+- Theme presets: `src/lib/themePresets.ts`
+- Theme provider: `src/app/providers.tsx`
+
+All colours, spacing, and visual tokens must come from the theme.
+
+---
 
 ### UI Primitives
-- `src/components/ui.tsx`
 
-Exports reusable components:
-- `Page`
-- `Card`
-- `Button`
-- `Input`
-- (Future: `Textarea`, `Select`, etc.)
+Located in:
+```
+src/components/ui.tsx
+```
 
-These components are the ONLY permitted surface for styling form elements.
+Core components:
+- Page
+- Card
+- SectionCard
+- Button
+- Input
+- Textarea
+- Field
+
+Rules:
+- ❌ Do NOT style raw HTML elements in pages
+- ❌ Do NOT introduce new UI patterns directly in pages
+- ✅ Add new UI elements to `ui.tsx`
 
 ---
 
-## Rules
+### Form Controls
 
-1. Do not style raw `<input>`, `<select>`, `<textarea>` directly in pages.
-2. Do not use inline styles.
-3. Do not introduce external UI frameworks.
-4. All new UI elements must be added to `ui.tsx`.
-5. Pages should compose primitives, not define styling.
-
----
-
-## Form Controls
-
-All form controls must use UI primitives:
-
+All inputs must use UI primitives:
 - Input
 - Textarea
 - Select
 
-Raw HTML elements must not be used directly in pages.
+Never use raw `<input>` / `<textarea>` in pages.
 
 ---
 
-## Adding a New UI Element
+## Layout System (Design + Structure)
 
-Example:
+### Two-Page Pattern (MANDATORY)
 
-If a `Textarea` is needed:
-
-1. Implement it in `ui.tsx`
-2. Match styling of `Input`
-3. Export it
-4. Use it everywhere via import
-
-Never style textarea directly in a page.
+All entity-based UI must follow this pattern:
 
 ---
 
-## Mobile-First Requirement
+### 1. Overview Page (List / Grid)
 
-All layouts must:
+Purpose:
+- Browse entities
+- Search and filter
+- Navigate to detail pages
 
-- Be usable at 375px width
-- Avoid hover-dependent interactions
-- Use large tap targets
-- Avoid fixed pixel widths
+Structure:
+- Minimal page title (optional)
+- Search + filters (progressive)
+- Card or row list
+- Add button: icon-only `+`
 
----
-
-## Branding Strategy
-
-Tenant branding is applied via theme presets.
-
-No component should hard-code:
-
-- Colors
-- Backgrounds
-- Brand accents
-
-All visual values must reference theme tokens.
+Rules:
+- No forms visible by default
+- Forms appear only after user action
+- Cards must be scannable (minimal metadata)
 
 ---
 
-## Collaboration Contract
+### 2. Detail Page (Edit / Manage)
 
-When requesting UI changes:
+Purpose:
+- Edit entity
+- Manage related data
 
-- Provide full file contents.
-- Changes should be returned as full replacement files.
-- No partial patch edits.
+Structure:
 
-This ensures consistency and prevents styling drift.
+1. Top Bar
+   - Title
+   - Back (left)
+   - Save / Save & Close (right)
+
+2. Details Section
+   - Name
+   - Description
+   - Status
+
+3. Subsections
+   - Tags, Members, Contacts, etc.
+
+Rules:
+- Forms are allowed here
+- Warn on unsaved changes
+- Keep layout clean and structured
+
+---
+
+## Section Pattern (MANDATORY)
+
+All sections must follow:
+
+```
+Section Title (count)   [controls]   [+]
+```
+
+Rules:
+- Title left
+- Controls middle/right
+- `+` always on far right
+
+---
+
+## Action Hierarchy
+
+### Page Level
+- Primary actions (Save)
+
+### Section Level
+- Controls (filters)
+- Add = icon only
+- Add reveals inline form
+
+### Form Actions
+- Primary: Add / Save
+- Secondary: Cancel
+
+Cancel must:
+- Close form
+- Reset state
+
+---
+
+## Forms
+
+Rules:
+- Hidden by default on overview pages
+- Revealed via `+`
+- Group fields logically
+- Avoid unnecessary fields
+
+---
+
+## Cards & Rows
+
+Allowed patterns:
+
+### Card
+- Used for overview lists
+
+### Row
+- Used for compact lists
+- Single-line layout
+
+---
+
+## Filters
+
+Rules:
+- One control per concept
+- Use segmented controls
+
+---
+
+## Mobile Rules
+
+- Must work at 375px
+- Single-column layouts
+- Large tap targets (44px)
+- No hover dependency
+
+---
+
+## Destructive Actions
+
+Rules:
+- Prefer Active/Inactive over delete
+- Only allow delete when safe
+
+---
+
+## What NOT to do
+
+- No inline styling in pages
+- No duplicate UI patterns
+- No mixing filters and actions
+
+---
+
+## Collaboration Rules
+
+When editing UI:
+- Follow this system
+- Prefer consistency over speed
+- Return full files (not partial edits)
+
+---
+
+## Summary
+
+If unsure:
+
+```
+Is this an entity?
+→ Yes → Use Overview + Detail pages
+
+Adding something?
+→ Use + → inline form → Add / Cancel
+
+Inside a section?
+→ Use Section Pattern
+```
+
+This system must be followed across all features.

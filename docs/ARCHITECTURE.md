@@ -47,8 +47,17 @@ Mosaic uses a custom UI system defined in:
 - src/lib/themePresets.ts
 - src/app/providers.tsx
 
-All visual components must use UI primitives defined in ui.tsx.
-No page should style raw HTML elements directly.
+   ### See documentation in docs/UI-SYSTEM.md
+   All visual components must use UI primitives defined in ui.tsx.
+   No page should style raw HTML elements directly.
+   Reuse existing UI patterns before creating new ones.
+   All UI designed with mobile-first layouts
+
+## Architecture rules
+- If a component appears twice, extract it
+- Derived state preferred over DB mutation
+- Avoid hardcoded enums where tenant customization is likely
+- Preserve audit/history rather than deleting records
 
 ## Key flows
 
@@ -77,6 +86,3 @@ Later (production hardening):
 - Prefer server routes (Next.js route handlers) for sensitive actions like creating invites.
 - Keep DB functions for state transitions (accept invite) because they are easy to secure and audit.
 
-## UI strategy
-Early stage: functional pages with minimal styling.
-Planned: add a small design system and a dark theme aligned to Mosaic Music’s audience (digitally savvy metal musicians).

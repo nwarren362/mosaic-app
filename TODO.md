@@ -18,6 +18,27 @@ This is a hobby project. Keep momentum: do 1–2 cleanup tasks per milestone.
 - [ ] Add audit logging table (optional, later)
 - [ ] Decide whether to keep Nigel as `is_super_user=true` long term or add a safer admin workflow
 
-## UI fundamentals (do after core flows)
-- [ ] Add a minimal design system: `Page`, `Card`, `Button`, `Input`
-- [ ] Add dark theme defaults aligned to Mosaic Music aesthetic
+## Already delivered
+* basic design system
+* dark theme alignment
+* venues CRM foundations
+* gigs linked to venue IDs
+* status lozenges / segmented controls / reusable layout primitives
+* artist/venue/gig detail page convergence
+
+
+## Backlog
+- [ ] Gig cancellation workflow: status change to Cancelled triggers communication and activity logging.
+- [ ] Audience/revenue/rating KPIs
+- [ ] reusable media hero component
+- [ ] markdown/rich text support
+- [ ] activity timeline abstraction
+- [ ] workflow primitives
+- [ ] communications logging
+- [ ] Google Maps polish
+- [ ] map thumbnail
+- [ ] upload pipeline for promo images
+- [ ] reusable searchable chips/filter system
+- [ ] extract reusable gigs list pattern
+- [ ] eliminate remaining hardcoded statuses
+- [ ] replace snapshot fields progressively with relational data

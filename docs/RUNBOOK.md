@@ -4,12 +4,19 @@ This project is intentionally beginner-friendly. These notes capture “how to r
 
 ## Working With ChatGPT
 
-When modifying UI:
+Editing via file exchange:
 
 - Always send full file contents when requesting edits.
-- Files should be explicitly renamed before upload (e.g. venue_id_page.tsx).
+- Files should be uniquly renamed before upload (e.g. venue_id_page_ddmmyy.tsx). 
+  Beware ChatGPT sometimes caches files and if you upload a file named used before 
+  it might work on an out-of-date version
 - ChatGPT should return full drop-in replacement files.
 - No partial regex edits.
+
+Editing via Work with Apps:
+- Chat GPT can only edit a single file (on screen) at a time
+- At busy times Work with Apps can be slow or unreliable
+- Work with Apps is preferable to file exchange as more streamlined workflow
 
 ## Local development
 1) Start dev server:
