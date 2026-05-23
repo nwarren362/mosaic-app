@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Page, Card, Button, Input, Select, Field, SectionCard, StatTile, StatusBadge, Textarea } from "@/components/ui";
-import { ActivityTimeline } from "@/components/ActivityTimeline";
+import { ActivityTimeline } from "../../../components/ActivityTimeline";
 
 type GigStatus = "confirmed" | "pending" | "cancelled";
 
