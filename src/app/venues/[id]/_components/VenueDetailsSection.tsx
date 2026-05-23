@@ -59,7 +59,7 @@ function ownerLabel(member: AgencyMember) {
     candidate.name ||
     profile?.email ||
     candidate.email ||
-    member.user_id
+    member.id
   );
 }
 

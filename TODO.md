@@ -25,6 +25,7 @@ This is a hobby project. Keep momentum: do 1–2 cleanup tasks per milestone.
 * gigs linked to venue IDs
 * status lozenges / segmented controls / reusable layout primitives
 * artist/venue/gig detail page convergence
+* activity timeline abstraction
 
 
 ## Backlog
@@ -32,7 +33,6 @@ This is a hobby project. Keep momentum: do 1–2 cleanup tasks per milestone.
 - [ ] Audience/revenue/rating KPIs
 - [ ] reusable media hero component
 - [ ] markdown/rich text support
-- [ ] activity timeline abstraction
 - [ ] workflow primitives
 - [ ] communications logging
 - [ ] Google Maps polish
