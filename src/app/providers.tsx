@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { THEME_PRESETS, ThemePreset } from "@/lib/themePresets";
 import { getActiveAgencyId } from "@/lib/agencyContext";
 import AppShell from "@/components/AppShell";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const pathname = usePathname();
 
   const [agencyName, setAgencyName] = useState<string | null>(null);
@@ -92,19 +91,17 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           position: "sticky",
           top: 0,
           zIndex: 50,
-          backdropFilter: "blur(10px)",
-          background: "rgba(0,0,0,0.55)",
+          background: "rgb(15, 19, 28)",
           borderBottom: "1px solid rgba(255,255,255,0.08)",
         }}
       >
         <div
           style={{
-            maxWidth: 1100,
-            margin: "0 auto",
-            padding: "12px 16px",
+            width: "100%",
+            padding: "10px 20px",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "flex-start",
             gap: 12,
           }}
         >
@@ -133,46 +130,24 @@ export default function Providers({ children }: { children: React.ReactNode }) {
                 src={logoUrl}
                 alt="Agency logo"
                 style={{
-                  height: 32,
+                  height: 28,
                   width: "auto",
-                  maxWidth: 140,
+                  maxWidth: 120,
                   objectFit: "contain",
                 }}
               />
-            ) : (
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "var(--radius-md)",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: "rgba(255,255,255,0.05)",
-                }}
-              />
-            )}
+            ) : null}
 
-            <div style={{ lineHeight: 1.1 }}>
-              <div style={{ fontWeight: 900, letterSpacing: -0.4 }}>{agencyName ?? "Mosaic App"}</div>
-              <div style={{ fontSize: 12, color: "var(--mutedText)" }}>
-                {agencyName ? "Agency workspace" : "Mosaic platform"}
-              </div>
+            <div
+              style={{
+                fontWeight: 900,
+                letterSpacing: -0.4,
+                fontSize: 16,
+              }}
+            >
+              {agencyName ?? "Agency"}
             </div>
           </div>
-
-          <button
-            onClick={() => router.push("/me")}
-            style={{
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(255,255,255,0.04)",
-              color: "var(--text)",
-              padding: "8px 10px",
-              borderRadius: "var(--radius-md)",
-              cursor: "pointer",
-              fontWeight: 800,
-            }}
-          >
-            Workspace
-          </button>
         </div>
       </header>
 

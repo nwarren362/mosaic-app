@@ -163,6 +163,24 @@ export default function GigDetailPage() {
   }, [gigId]);
 
   useEffect(() => {
+    if (!gig) return;
+    if (window.location.hash !== "#activity") return;
+
+    const timeoutIds = [100, 300, 600, 1000].map((delay) =>
+      window.setTimeout(() => {
+        document.getElementById("activity")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, delay)
+    );
+
+    return () => {
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    };
+  }, [gig]);
+
+  useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent) {
       if (!dirty) return;
 
@@ -686,12 +704,13 @@ export default function GigDetailPage() {
             </Field>
           </div>
         </SectionCard>
-
+      <div id="activity">
         <ActivityTimeline
           agencyId={gig.agency_id}
           entityType="gig"
           entityId={gig.id}
         />
+      </div>
       </div>
     </Page>
   );

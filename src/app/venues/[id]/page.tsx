@@ -146,6 +146,24 @@ export default function VenueDetailPage() {
   }, [venueId]);
 
   useEffect(() => {
+    if (!venue) return;
+    if (window.location.hash !== "#activity") return;
+
+    const timeoutIds = [100, 300, 600, 1000].map((delay) =>
+      window.setTimeout(() => {
+        document.getElementById("activity")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, delay)
+    );
+
+    return () => {
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    };
+  }, [venue]);
+
+  useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent) {
       if (!dirty) return;
 
@@ -1218,11 +1236,13 @@ export default function VenueDetailPage() {
           onFeedbackChanged={refreshFeedbackAndActivity}
         />
 
-        <ActivityTimeline
-          agencyId={venue.agency_id}
-          entityType="venue"
-          entityId={venue.id}
-        />
+        <div id="activity">
+          <ActivityTimeline
+            agencyId={venue.agency_id}
+            entityType="venue"
+            entityId={venue.id}
+          />
+        </div>
       </div>
     </Page>
   );

@@ -1032,6 +1032,30 @@ export default function ArtistDetailPage() {
   }, [id]);
 
   useEffect(() => {
+    if (!artist) return;
+
+    function scrollToActivityIfRequested() {
+      if (window.location.hash !== "#activity") return;
+
+      document.getElementById("activity")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+
+    const timeoutIds = [50, 250, 600, 1000].map((delay) =>
+      window.setTimeout(scrollToActivityIfRequested, delay)
+    );
+
+    window.addEventListener("hashchange", scrollToActivityIfRequested);
+
+    return () => {
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      window.removeEventListener("hashchange", scrollToActivityIfRequested);
+    };
+  }, [artist]);
+
+  useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent) {
       if (!dirty) return;
 
@@ -1965,7 +1989,7 @@ export default function ArtistDetailPage() {
             </SectionCard>
           </div>
 
-          <div style={{ marginTop: "var(--space-4)" }}>
+          <div id="activity" style={{ marginTop: "var(--space-4)", scrollMarginTop: 24 }}>
             <ActivityTimeline
               agencyId={artist.agency_id}
               entityType="artist"

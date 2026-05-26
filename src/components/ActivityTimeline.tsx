@@ -58,6 +58,22 @@ function formatDueDate(value: string | null) {
   });
 }
 
+function toDateInputValue(value: string | null) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function buildCompletedTaskNotes(existingNotes: string | null, completionNote: string) {
   const completedLine = `Completed ${formatActivityDate(new Date().toISOString())}`;
   const trimmedCompletionNote = completionNote.trim();
@@ -86,6 +102,20 @@ function isOpenTask(entry: ActivityLogEntry) {
   return isTask(entry) && !entry.completed_at;
 }
 
+function taskMenuButtonStyle(disabled = false): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: "8px 10px",
+    borderRadius: 8,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: disabled ? "rgb(31, 36, 48)" : "rgb(38, 45, 60)",
+    color: disabled ? "var(--mutedText)" : "var(--text)",
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontWeight: 700,
+    textAlign: "left",
+  };
+}
+
 export function ActivityTimeline({
   agencyId,
   entityType,
@@ -99,7 +129,15 @@ export function ActivityTimeline({
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+  const [openTaskMenuId, setOpenTaskMenuId] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTaskSummary, setEditTaskSummary] = useState("");
+  const [editTaskNotes, setEditTaskNotes] = useState("");
+  const [editTaskDueDate, setEditTaskDueDate] = useState("");
+  const [savingTaskEdit, setSavingTaskEdit] = useState(false);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     void loadEntries();
@@ -226,10 +264,7 @@ export function ActivityTimeline({
   async function handleCompleteTask(entry: ActivityLogEntry) {
     if (!isOpenTask(entry)) return;
 
-    const completionNote = window.prompt(
-      "Optional completion note",
-      ""
-    );
+    const completionNote = window.prompt("Optional completion note", "");
 
     if (completionNote === null) return;
 
@@ -253,6 +288,98 @@ export function ActivityTimeline({
       return;
     }
 
+    setOpenTaskMenuId(null);
+    await loadEntries();
+  }
+
+  function startEditingTask(entry: ActivityLogEntry) {
+    if (!isTask(entry)) return;
+
+    setEditingTaskId(entry.id);
+    setEditTaskSummary(entry.summary);
+    setEditTaskNotes(entry.notes ?? "");
+    setEditTaskDueDate(toDateInputValue(entry.due_at));
+    setOpenTaskMenuId(null);
+  }
+
+  function cancelEditingTask() {
+    setEditingTaskId(null);
+    setEditTaskSummary("");
+    setEditTaskNotes("");
+    setEditTaskDueDate("");
+  }
+
+  async function handleSaveTaskEdit(entry: ActivityLogEntry) {
+    const trimmedSummary = editTaskSummary.trim();
+
+    if (!trimmedSummary) {
+      alert("Task summary is required.");
+      return;
+    }
+
+    setSavingTaskEdit(true);
+
+    const { data: updatedRows, error } = await supabase
+      .from("activity_log")
+      .update({
+        summary: trimmedSummary,
+        notes: editTaskNotes.trim() || null,
+        due_at: editTaskDueDate ? new Date(`${editTaskDueDate}T12:00:00`).toISOString() : null,
+      })
+      .eq("id", entry.id)
+      .eq("agency_id", agencyId)
+      .select("id");
+
+    setSavingTaskEdit(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    if (!updatedRows || updatedRows.length === 0) {
+      alert(
+        "The task was not updated. You may not have permission to edit this task, or it may already have been changed."
+      );
+      return;
+    }
+
+    cancelEditingTask();
+    await loadEntries();
+  }
+
+  async function handleDeleteTask(entry: ActivityLogEntry) {
+    if (!isTask(entry)) return;
+
+    const confirmed = window.confirm(`Delete task "${entry.summary}"?`);
+    if (!confirmed) return;
+
+    setDeletingTaskId(entry.id);
+
+    const { data: deletedRows, error } = await supabase
+      .from("activity_log")
+      .delete()
+      .eq("id", entry.id)
+      .eq("agency_id", agencyId)
+      .select("id");
+
+    setDeletingTaskId(null);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    if (!deletedRows || deletedRows.length === 0) {
+      alert(
+        "The task was not deleted. You may not have permission to delete this task, or it may already have been changed."
+      );
+      return;
+    }
+
+    if (editingTaskId === entry.id) {
+      cancelEditingTask();
+    }
+
+    setOpenTaskMenuId(null);
     await loadEntries();
   }
 
@@ -377,23 +504,131 @@ export function ActivityTimeline({
                       flexWrap: "wrap",
                     }}
                   >
-                    {isOpenTask(entry) ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => handleCompleteTask(entry)}
-                        disabled={completingTaskId === entry.id}
-                      >
-                        {completingTaskId === entry.id ? "Completing…" : "Complete"}
-                      </Button>
+                    {isTask(entry) ? (
+                      <div style={{ position: "relative" }}>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() =>
+                            setOpenTaskMenuId((current) =>
+                              current === entry.id ? null : entry.id
+                            )
+                          }
+                        >
+                          ⋯
+                        </Button>
+
+                        {openTaskMenuId === entry.id ? (
+                          <div
+                            style={{
+                              position: "absolute",
+                              right: 0,
+                              top: "calc(100% + 6px)",
+                              zIndex: 20,
+                              display: "grid",
+                              gap: 4,
+                              minWidth: 140,
+                              padding: 6,
+                              border: "1px solid rgba(255,255,255,0.14)",
+                              borderRadius: "var(--radius-lg)",
+                              background: "rgb(18, 24, 34)",
+                              boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
+                            }}
+                          >
+                            {isOpenTask(entry) ? (
+                              <button
+                                type="button"
+                                onClick={() => handleCompleteTask(entry)}
+                                disabled={completingTaskId === entry.id}
+                                style={taskMenuButtonStyle(completingTaskId === entry.id)}
+                              >
+                                {completingTaskId === entry.id ? "Completing…" : "Complete"}
+                              </button>
+                            ) : null}
+
+                            <button
+                              type="button"
+                              onClick={() => startEditingTask(entry)}
+                              style={taskMenuButtonStyle()}
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTask(entry)}
+                              disabled={deletingTaskId === entry.id}
+                              style={taskMenuButtonStyle(deletingTaskId === entry.id)}
+                            >
+                              {deletingTaskId === entry.id ? "Deleting…" : "Delete"}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     ) : null}
+
                     <div style={{ color: "var(--mutedText)", fontSize: 12 }}>
                       {formatActivityDate(entry.created_at)}
                     </div>
                   </div>
                 </div>
 
-                {entry.notes ? (
+                {editingTaskId === entry.id ? (
+                  <div
+                    style={{
+                      marginTop: "var(--space-3)",
+                      display: "grid",
+                      gap: "var(--space-3)",
+                      borderTop: "1px solid rgba(255,255,255,0.10)",
+                      paddingTop: "var(--space-3)",
+                    }}
+                  >
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field label="Task">
+                        <Input
+                          value={editTaskSummary}
+                          onChange={(event) => setEditTaskSummary(event.target.value)}
+                        />
+                      </Field>
+
+                      <Field label="Due date">
+                        <Input
+                          type="date"
+                          value={editTaskDueDate}
+                          onChange={(event) => setEditTaskDueDate(event.target.value)}
+                        />
+                      </Field>
+                    </div>
+
+                    <Field label="Notes">
+                      <Textarea
+                        value={editTaskNotes}
+                        onChange={(event) => setEditTaskNotes(event.target.value)}
+                        style={{ minHeight: 90, resize: "vertical" }}
+                      />
+                    </Field>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        gap: "var(--space-2)",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <Button type="button" variant="secondary" onClick={cancelEditingTask}>
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => handleSaveTaskEdit(entry)}
+                        disabled={savingTaskEdit || editTaskSummary.trim().length === 0}
+                      >
+                        {savingTaskEdit ? "Saving…" : "Save task"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : entry.notes ? (
                   <div
                     style={{
                       color: "var(--mutedText)",

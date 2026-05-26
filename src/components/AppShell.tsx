@@ -11,6 +11,7 @@ import {
   Wrench,
   FileText,
   Calendar,
+  ListTodo,
 } from "lucide-react";
 
 type NavItem = {
@@ -83,6 +84,7 @@ export default function AppShell({
     { href: "/artists", label: "Artists", Icon: Music },
     { href: "/venues", label: "Venues", Icon: Building2 },
     { href: "/gigs", label: "Gigs", Icon: Calendar },
+    { href: "/tasks", label: "Tasks", Icon: ListTodo },
     { href: "/me", label: "Me", Icon: FileText },
     { href: "/admin/invitations", label: "Invitations", Icon: Mail },
   ];
