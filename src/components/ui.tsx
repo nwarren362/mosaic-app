@@ -192,6 +192,95 @@ export function IconButton({
   );
 }
 
+type ActionMenuItem = {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: "default" | "danger";
+};
+
+export function ActionMenu({
+  label = "Actions",
+  open,
+  onOpenChange,
+  items,
+}: {
+  label?: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  items: ActionMenuItem[];
+}) {
+  return (
+    <div style={{ position: "relative" }}>
+      <Button
+        type="button"
+        variant="secondary"
+        aria-label={label}
+        title={label}
+        onClick={() => onOpenChange(!open)}
+        style={{
+          width: 34,
+          height: 34,
+          minWidth: 34,
+          padding: 0,
+          borderRadius: 999,
+        }}
+      >
+        ⋯
+      </Button>
+
+      {open ? (
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            top: "calc(100% + 6px)",
+            zIndex: 30,
+            display: "grid",
+            gap: 4,
+            minWidth: 150,
+            padding: 6,
+            border: "1px solid rgba(255,255,255,0.14)",
+            borderRadius: "var(--radius-lg)",
+            background: "rgb(18, 24, 34)",
+            boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
+          }}
+        >
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => {
+                if (item.disabled) return;
+                item.onClick();
+              }}
+              disabled={item.disabled}
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: item.disabled ? "rgb(31, 36, 48)" : "rgb(38, 45, 60)",
+                color:
+                  item.tone === "danger"
+                    ? "rgba(254,202,202,0.95)"
+                    : item.disabled
+                      ? "var(--mutedText)"
+                      : "var(--text)",
+                cursor: item.disabled ? "not-allowed" : "pointer",
+                fontWeight: 700,
+                textAlign: "left",
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function SegmentedControl<T extends string>({
   value,
   options,

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Button, Field, Input, SectionCard, SegmentedControl, Textarea } from "@/components/ui";
+import { ActionMenu, Button, Field, Input, SectionCard, SegmentedControl, Textarea } from "@/components/ui";
 
 type ActivityEntityType = "artist" | "venue" | "gig" | "contact" | "workflow";
 
@@ -100,20 +100,6 @@ function isTask(entry: ActivityLogEntry) {
 
 function isOpenTask(entry: ActivityLogEntry) {
   return isTask(entry) && !entry.completed_at;
-}
-
-function taskMenuButtonStyle(disabled = false): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "8px 10px",
-    borderRadius: 8,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: disabled ? "rgb(31, 36, 48)" : "rgb(38, 45, 60)",
-    color: disabled ? "var(--mutedText)" : "var(--text)",
-    cursor: disabled ? "not-allowed" : "pointer",
-    fontWeight: 700,
-    textAlign: "left",
-  };
 }
 
 export function ActivityTimeline({
@@ -505,66 +491,33 @@ export function ActivityTimeline({
                     }}
                   >
                     {isTask(entry) ? (
-                      <div style={{ position: "relative" }}>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={() =>
-                            setOpenTaskMenuId((current) =>
-                              current === entry.id ? null : entry.id
-                            )
-                          }
-                        >
-                          ⋯
-                        </Button>
-
-                        {openTaskMenuId === entry.id ? (
-                          <div
-                            style={{
-                              position: "absolute",
-                              right: 0,
-                              top: "calc(100% + 6px)",
-                              zIndex: 20,
-                              display: "grid",
-                              gap: 4,
-                              minWidth: 140,
-                              padding: 6,
-                              border: "1px solid rgba(255,255,255,0.14)",
-                              borderRadius: "var(--radius-lg)",
-                              background: "rgb(18, 24, 34)",
-                              boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
-                            }}
-                          >
-                            {isOpenTask(entry) ? (
-                              <button
-                                type="button"
-                                onClick={() => handleCompleteTask(entry)}
-                                disabled={completingTaskId === entry.id}
-                                style={taskMenuButtonStyle(completingTaskId === entry.id)}
-                              >
-                                {completingTaskId === entry.id ? "Completing…" : "Complete"}
-                              </button>
-                            ) : null}
-
-                            <button
-                              type="button"
-                              onClick={() => startEditingTask(entry)}
-                              style={taskMenuButtonStyle()}
-                            >
-                              Edit
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteTask(entry)}
-                              disabled={deletingTaskId === entry.id}
-                              style={taskMenuButtonStyle(deletingTaskId === entry.id)}
-                            >
-                              {deletingTaskId === entry.id ? "Deleting…" : "Delete"}
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
+                      <ActionMenu
+                        label="Task actions"
+                        open={openTaskMenuId === entry.id}
+                        onOpenChange={(open) => setOpenTaskMenuId(open ? entry.id : null)}
+                        items={[
+                          ...(isOpenTask(entry)
+                            ? [
+                                {
+                                  label:
+                                    completingTaskId === entry.id ? "Completing…" : "Complete",
+                                  onClick: () => handleCompleteTask(entry),
+                                  disabled: completingTaskId === entry.id,
+                                },
+                              ]
+                            : []),
+                          {
+                            label: "Edit",
+                            onClick: () => startEditingTask(entry),
+                          },
+                          {
+                            label: deletingTaskId === entry.id ? "Deleting…" : "Delete",
+                            onClick: () => handleDeleteTask(entry),
+                            disabled: deletingTaskId === entry.id,
+                            tone: "danger",
+                          },
+                        ]}
+                      />
                     ) : null}
 
                     <div style={{ color: "var(--mutedText)", fontSize: 12 }}>
