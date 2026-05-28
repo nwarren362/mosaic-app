@@ -61,6 +61,7 @@ This is a hobby project. Keep momentum: do 1–2 cleanup tasks per milestone.
 * simplified agency-focused application header
 * sidebar navigation including Tasks workspace
 * task menu abstracted into UI pattern and implemented into artists_id, gigs_id, and venues_id
+* Implemented task re-assignment to another user via the /tasks page (under edit task)
 
 
 ## Active backlog

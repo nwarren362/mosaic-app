@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { ActionMenu, Button, Field, Input, SectionCard, SegmentedControl, Textarea } from "@/components/ui";
+import { ActionMenu, Button, Field, Input, SectionCard, SegmentedControl, Select, Textarea } from "@/components/ui";
 
 type ActivityEntityType = "artist" | "venue" | "gig" | "contact" | "workflow";
 
@@ -15,9 +15,15 @@ type ActivityLogEntry = {
   completed_at: string | null;
   created_at: string;
   created_by: string | null;
+  assigned_to: string | null;
 };
 
 type EntryMode = "note" | "task";
+
+type AgencyMemberOption = {
+  user_id: string;
+  display_name: string;
+};
 
 type ActivityTimelineProps = {
   agencyId: string;
@@ -122,6 +128,8 @@ export function ActivityTimeline({
   const [editTaskSummary, setEditTaskSummary] = useState("");
   const [editTaskNotes, setEditTaskNotes] = useState("");
   const [editTaskDueDate, setEditTaskDueDate] = useState("");
+  const [editTaskAssignedTo, setEditTaskAssignedTo] = useState("");
+  const [agencyMembers, setAgencyMembers] = useState<AgencyMemberOption[]>([]);
   const [savingTaskEdit, setSavingTaskEdit] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
@@ -129,6 +137,11 @@ export function ActivityTimeline({
     void loadEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agencyId, entityType, entityId]);
+
+  useEffect(() => {
+    void loadAgencyMembers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agencyId]);
 
   useEffect(() => {
     function handleActivityChanged(event: Event) {
@@ -153,6 +166,88 @@ export function ActivityTimeline({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityType, entityId]);
 
+  async function loadAgencyMembers() {
+    if (!agencyId) {
+      setAgencyMembers([]);
+      return;
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const { data: membershipRows, error: membershipError } = await supabase
+      .from("agency_memberships")
+      .select("user_id")
+      .eq("agency_id", agencyId);
+
+    if (membershipError || !membershipRows) {
+      if (membershipError) {
+        console.warn("Failed to load agency members for task assignment:", membershipError.message);
+      }
+
+      setAgencyMembers(
+        user
+          ? [
+              {
+                user_id: user.id,
+                display_name: user.email ?? "Me",
+              },
+            ]
+          : []
+      );
+      return;
+    }
+
+    const userIds = Array.from(
+      new Set(
+        membershipRows
+          .map((membership) => membership.user_id as string | null)
+          .filter((userId): userId is string => Boolean(userId))
+      )
+    );
+
+    if (user && !userIds.includes(user.id)) {
+      userIds.unshift(user.id);
+    }
+
+    const { data: profileRows, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", userIds);
+
+    if (profileError) {
+      console.warn("Failed to load profiles for task assignment:", profileError.message);
+    }
+
+    const profileById = new Map(
+      (profileRows ?? []).map((profile) => [
+        profile.id as string,
+        { full_name: profile.full_name as string | null },
+      ])
+    );
+
+    const members = userIds
+      .map((userId) => {
+        const profile = profileById.get(userId);
+        const displayName =
+          profile?.full_name?.trim() ||
+          (userId === user?.id ? user.email ?? "Me" : "Unknown agent");
+
+        return {
+          user_id: userId,
+          display_name: userId === user?.id ? `${displayName} (me)` : displayName,
+        };
+      })
+      .sort((a, b) => {
+        if (a.user_id === user?.id) return -1;
+        if (b.user_id === user?.id) return 1;
+        return a.display_name.localeCompare(b.display_name);
+      });
+
+    setAgencyMembers(members);
+  }
+
   async function loadEntries() {
     if (!agencyId || !entityId) {
       setEntries([]);
@@ -164,7 +259,7 @@ export function ActivityTimeline({
 
     const { data, error } = await supabase
       .from("activity_log")
-      .select("id, activity_type, summary, notes, due_at, completed_at, created_at, created_by")
+      .select("id, activity_type, summary, notes, due_at, completed_at, created_at, created_by, assigned_to")
       .eq("agency_id", agencyId)
       .eq("entity_type", entityType)
       .eq("entity_id", entityId)
@@ -209,9 +304,9 @@ export function ActivityTimeline({
       return;
     }
 
-    const payload =
+    const { error } =
       entryMode === "note"
-        ? {
+        ? await supabase.from("activity_log").insert({
             agency_id: agencyId,
             entity_type: entityType,
             entity_id: entityId,
@@ -220,8 +315,8 @@ export function ActivityTimeline({
             notes: trimmedNote,
             due_at: null,
             created_by: user.id,
-          }
-        : {
+          })
+        : await supabase.from("activity_log").insert({
             agency_id: agencyId,
             entity_type: entityType,
             entity_id: entityId,
@@ -230,9 +325,8 @@ export function ActivityTimeline({
             notes: trimmedNote || null,
             due_at: newTaskDueDate ? new Date(`${newTaskDueDate}T12:00:00`).toISOString() : null,
             created_by: user.id,
-          };
-
-    const { error } = await supabase.from("activity_log").insert(payload);
+            assigned_to: user.id,
+          });
 
     setSaving(false);
 
@@ -285,6 +379,7 @@ export function ActivityTimeline({
     setEditTaskSummary(entry.summary);
     setEditTaskNotes(entry.notes ?? "");
     setEditTaskDueDate(toDateInputValue(entry.due_at));
+    setEditTaskAssignedTo(entry.assigned_to ?? "");
     setOpenTaskMenuId(null);
   }
 
@@ -293,6 +388,7 @@ export function ActivityTimeline({
     setEditTaskSummary("");
     setEditTaskNotes("");
     setEditTaskDueDate("");
+    setEditTaskAssignedTo("");
   }
 
   async function handleSaveTaskEdit(entry: ActivityLogEntry) {
@@ -300,6 +396,11 @@ export function ActivityTimeline({
 
     if (!trimmedSummary) {
       alert("Task summary is required.");
+      return;
+    }
+
+    if (!editTaskAssignedTo) {
+      alert("Task assignee is required.");
       return;
     }
 
@@ -311,6 +412,7 @@ export function ActivityTimeline({
         summary: trimmedSummary,
         notes: editTaskNotes.trim() || null,
         due_at: editTaskDueDate ? new Date(`${editTaskDueDate}T12:00:00`).toISOString() : null,
+        assigned_to: editTaskAssignedTo,
       })
       .eq("id", entry.id)
       .eq("agency_id", agencyId)
@@ -551,6 +653,19 @@ export function ActivityTimeline({
                           onChange={(event) => setEditTaskDueDate(event.target.value)}
                         />
                       </Field>
+
+                      <Field label="Assigned to">
+                        <Select
+                          value={editTaskAssignedTo}
+                          onChange={(event) => setEditTaskAssignedTo(event.target.value)}
+                        >
+                          {agencyMembers.map((member) => (
+                            <option key={member.user_id} value={member.user_id}>
+                              {member.display_name}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
                     </div>
 
                     <Field label="Notes">
@@ -575,7 +690,11 @@ export function ActivityTimeline({
                       <Button
                         type="button"
                         onClick={() => handleSaveTaskEdit(entry)}
-                        disabled={savingTaskEdit || editTaskSummary.trim().length === 0}
+                        disabled={
+                          savingTaskEdit ||
+                          editTaskSummary.trim().length === 0 ||
+                          !editTaskAssignedTo
+                        }
                       >
                         {savingTaskEdit ? "Saving…" : "Save task"}
                       </Button>
