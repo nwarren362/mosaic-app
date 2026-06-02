@@ -6,6 +6,7 @@ import { Pencil } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Page, Card, Button, Input, Select, Field, SectionCard, StatTile, StatusBadge, Textarea } from "@/components/ui";
 import { ActivityTimeline } from "../../../components/ActivityTimeline";
+import { createDomainEvent, dispatchDomainEvent } from "@/lib/workflows";
 
 type GigStatus = "confirmed" | "pending" | "cancelled";
 
@@ -321,6 +322,49 @@ export default function GigDetailPage() {
       return false;
     }
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const previousStatus = gig.status ?? "confirmed";
+
+    if (
+      previousStatus !== status &&
+      (status === "cancelled" || status === "confirmed") &&
+      user
+    ) {
+      const workflowEventType = status === "cancelled" ? "gig.cancelled" : "gig.confirmed";
+
+      const event = createDomainEvent({
+        type: workflowEventType,
+        agencyId: gig.agency_id,
+        entityType: "gig",
+        entityId: gig.id,
+        actorUserId: user.id,
+        metadata: {
+          previous_status: previousStatus,
+          next_status: status,
+          title: title.trim() || gig.title || null,
+          artist_id: artistId || null,
+          venue_id: venueId || null,
+          starts_at: fromDateTimeLocal(startsAt),
+        },
+      });
+
+      const workflowResult = await dispatchDomainEvent(
+        {
+          supabase,
+          agencyId: gig.agency_id,
+          actor: { userId: user.id },
+        },
+        event
+      );
+
+      if (!workflowResult.ok) {
+        console.warn(`${workflowEventType} workflow did not complete cleanly`, workflowResult.failures);
+      }
+    }
+
     const oldStartsAt = gig.starts_at;
     const newStartsAt = fromDateTimeLocal(startsAt);
     const oldFee = gig.fee_cents ?? 0;
@@ -430,10 +474,6 @@ export default function GigDetailPage() {
     }
 
     if (activityRows.length > 0) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
       const rowsWithUser = activityRows.map((row) => ({
         ...row,
         created_by: user?.id ?? null,

@@ -63,18 +63,25 @@ This is a hobby project. Keep momentum: do 1–2 cleanup tasks per milestone.
 * task menu abstracted into UI pattern and implemented into artists_id, gigs_id, and venues_id
 * Implemented task re-assignment to another user via the /tasks page (under edit task)
 
+### Workflow architecture foundation
+* Domain event dispatcher
+* Workflow event persistence (workflow_events)
+* Workflow-generated tasks
+* Workflow-generated activity entries
+* workflow_event_id linkage between events and generated records
+* Gig cancellation workflow
+* Gig confirmation workflow
 
 ## Active backlog
 
 ### Workflow + automation
-- [ ] workflow primitives engine
 - [ ] workflow templates
 - [ ] reusable approval/request flows
 - [ ] automated reminders/escalations
 - [ ] recurring tasks
-- [ ] task assignment to users
 - [ ] notifications framework
-- [ ] event-driven automation architecture
+- [ ] workflow analytics + operational reporting
+- [ ] task reassignment workflows
 
 ### Communications + CRM
 - [ ] communications logging
@@ -85,8 +92,7 @@ This is a hobby project. Keep momentum: do 1–2 cleanup tasks per milestone.
 - [ ] outbound email provider integration polish - easy configuration per agency
 
 ### Gigs + operations
-- [ ] gig cancellation workflow
-- [ ] cancellation communications automation
+- [ ] gig cancellation communications automation
 - [ ] load-in / schedule workflow support
 - [ ] travel/logistics planning tools
 - [ ] settlement/payment tracking
