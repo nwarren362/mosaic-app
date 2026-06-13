@@ -204,11 +204,13 @@ export function ActionMenu({
   open,
   onOpenChange,
   items,
+  menuAlign = "right",
 }: {
   label?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   items: ActionMenuItem[];
+  menuAlign?: "left" | "right";
 }) {
   return (
     <div style={{ position: "relative" }}>
@@ -233,12 +235,13 @@ export function ActionMenu({
         <div
           style={{
             position: "absolute",
-            right: 0,
+            ...(menuAlign === "right" ? { right: 0 } : { left: 0 }),
             top: "calc(100% + 6px)",
             zIndex: 30,
             display: "grid",
             gap: 4,
             minWidth: 150,
+            maxWidth: "calc(100vw - 32px)",
             padding: 6,
             border: "1px solid rgba(255,255,255,0.14)",
             borderRadius: "var(--radius-lg)",

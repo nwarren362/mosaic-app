@@ -19,7 +19,7 @@ import {
 } from "@/components/ui";
 
 type TaskEntityType = "artist" | "venue" | "gig" | "contact" | "workflow";
-type TaskFilter = "all" | "overdue" | "due_today" | "no_due";
+type TaskFilter = "all" | "overdue" | "due_today" | "due_soon" | "no_due";
 type TaskOwnerFilter = "mine" | "agency" | string;
 
 type TaskRow = {
@@ -54,6 +54,7 @@ type GigLookupRow = {
 type AgencyMemberLookupRow = {
   user_id: string;
   display_name: string;
+  role?: string | null;
 };
 
 function startOfToday() {
@@ -65,6 +66,12 @@ function startOfToday() {
 function endOfToday() {
   const date = new Date();
   date.setHours(23, 59, 59, 999);
+  return date;
+}
+
+function endOfDueSoonWindow() {
+  const date = endOfToday();
+  date.setDate(date.getDate() + 3);
   return date;
 }
 
@@ -129,10 +136,24 @@ function isDueToday(task: TaskRow) {
   );
 }
 
+function isDueSoon(task: TaskRow) {
+  if (!task.due_at || task.completed_at) return false;
+  if (isOverdue(task) || isDueToday(task)) return false;
+
+  const dueDate = new Date(task.due_at);
+  return (
+    !Number.isNaN(dueDate.getTime()) &&
+    dueDate > endOfToday() &&
+    dueDate <= endOfDueSoonWindow()
+  );
+}
+
 function taskDueLabel(task: TaskRow) {
   if (task.completed_at) return "Completed";
   if (!task.due_at) return "No due date";
-  if (isOverdue(task)) return "Overdue";
+  if (isOverdue(task)) return `Overdue · ${formatDate(task.due_at)}`;
+  if (isDueToday(task)) return "Due today";
+  if (isDueSoon(task)) return `Due soon · ${formatDate(task.due_at)}`;
 
   return `Due ${formatDate(task.due_at)}`;
 }
@@ -189,9 +210,43 @@ function buildCompletedTaskNotes(existingNotes: string | null, completionNote: s
 function taskMatchesFilter(task: TaskRow, filter: TaskFilter) {
   if (filter === "overdue") return isOverdue(task);
   if (filter === "due_today") return isDueToday(task);
+  if (filter === "due_soon") return isDueSoon(task);
   if (filter === "no_due") return !task.due_at;
   return true;
 }
+
+function taskUrgencyRank(task: TaskRow) {
+  if (isOverdue(task)) return 0;
+  if (isDueToday(task)) return 1;
+  if (isDueSoon(task)) return 2;
+  if (!task.due_at) return 4;
+  return 3;
+}
+
+function taskUrgencyGroupLabel(task: TaskRow) {
+  if (isOverdue(task)) return "Overdue";
+  if (isDueToday(task)) return "Due today";
+  if (isDueSoon(task)) return "Due soon";
+  if (!task.due_at) return "No due date";
+  return "Later";
+}
+
+function compareTasksByUrgency(a: TaskRow, b: TaskRow) {
+  const urgencyDifference = taskUrgencyRank(a) - taskUrgencyRank(b);
+  if (urgencyDifference !== 0) return urgencyDifference;
+
+  const aDue = a.due_at ? new Date(a.due_at).getTime() : Number.POSITIVE_INFINITY;
+  const bDue = b.due_at ? new Date(b.due_at).getTime() : Number.POSITIVE_INFINITY;
+
+  if (aDue !== bDue) return aDue - bDue;
+
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+}
+
+type TaskGroup = {
+  label: string;
+  tasks: TaskRow[];
+};
 
 function isAgencyOwnerFilter(value: TaskOwnerFilter) {
   return value === "agency";
@@ -205,6 +260,10 @@ function possessiveName(name: string) {
   return name.endsWith("s") ? `${name}' tasks` : `${name}'s tasks`;
 }
 
+function canUseManagerTaskView(role?: string | null) {
+  return ["agency_admin", "admin", "manager", "owner"].includes(role ?? "");
+}
+
 export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -213,6 +272,7 @@ export default function TasksPage() {
   const [ownerFilter, setOwnerFilter] = useState<TaskOwnerFilter>("mine");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [agencyMembers, setAgencyMembers] = useState<AgencyMemberLookupRow[]>([]);
+  const [canManageAgencyTasks, setCanManageAgencyTasks] = useState(false);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [entityLabels, setEntityLabels] = useState<Record<string, string>>({});
 
@@ -237,6 +297,7 @@ export default function TasksPage() {
       setEntityLabels({});
       setCurrentUserId(null);
       setAgencyMembers([]);
+      setCanManageAgencyTasks(false);
       setMessage("No active agency selected. Go to /me and choose an agency.");
       setLoading(false);
       return;
@@ -252,13 +313,16 @@ export default function TasksPage() {
       setEntityLabels({});
       setCurrentUserId(null);
       setAgencyMembers([]);
+      setCanManageAgencyTasks(false);
       setMessage(userError?.message ?? "You must be signed in to view tasks.");
       setLoading(false);
       return;
     }
 
     setCurrentUserId(user.id);
-    await loadAgencyMembers(activeAgencyId, user.id);
+    const userCanManageAgencyTasks = await loadAgencyMembers(activeAgencyId, user.id);
+    setCanManageAgencyTasks(userCanManageAgencyTasks);
+
 
     let taskQuery = supabase
       .from("activity_log")
@@ -295,7 +359,7 @@ export default function TasksPage() {
   async function loadAgencyMembers(agencyId: string, currentUserId: string) {
     const { data: membershipRows, error: membershipError } = await supabase
       .from("agency_memberships")
-      .select("user_id")
+      .select("user_id, role")
       .eq("agency_id", agencyId);
 
     if (membershipError || !membershipRows) {
@@ -311,9 +375,10 @@ export default function TasksPage() {
         {
           user_id: currentUserId,
           display_name: user?.email ?? "Me",
+          role: null,
         },
       ]);
-      return;
+      return false;
     }
 
     const userIds = Array.from(
@@ -327,6 +392,16 @@ export default function TasksPage() {
     if (!userIds.includes(currentUserId)) {
       userIds.unshift(currentUserId);
     }
+
+    const roleByUserId = new Map(
+      (membershipRows ?? []).map((membership) => [
+        membership.user_id as string,
+        membership.role as string | null,
+      ])
+    );
+
+    const currentUserRole = roleByUserId.get(currentUserId) ?? null;
+    const userCanManageAgencyTasks = canUseManagerTaskView(currentUserRole);
 
     const { data: profileRows, error: profileError } = await supabase
       .from("profiles")
@@ -360,6 +435,7 @@ export default function TasksPage() {
         return {
           user_id: userId,
           display_name: userId === currentUserId ? `${displayName} (me)` : displayName,
+          role: roleByUserId.get(userId) ?? null,
         };
       })
       .sort((a, b) => {
@@ -369,6 +445,7 @@ export default function TasksPage() {
       });
 
     setAgencyMembers(members);
+    return userCanManageAgencyTasks;
   }
 
   async function loadEntityLabels(loadedTasks: TaskRow[], agencyId: string) {
@@ -431,6 +508,7 @@ export default function TasksPage() {
       open: tasks.length,
       overdue: tasks.filter(isOverdue).length,
       dueToday: tasks.filter(isDueToday).length,
+      dueSoon: tasks.filter(isDueSoon).length,
       noDueDate: tasks.filter((task) => !task.due_at).length,
     }),
     [tasks]
@@ -449,6 +527,22 @@ export default function TasksPage() {
       return haystack.includes(search);
     });
   }, [entityLabels, filter, query, tasks]);
+
+  const taskGroups = useMemo<TaskGroup[]>(() => {
+    const groups = new Map<string, TaskRow[]>();
+
+    for (const task of [...filteredTasks].sort(compareTasksByUrgency)) {
+      const label = taskUrgencyGroupLabel(task);
+      groups.set(label, [...(groups.get(label) ?? []), task]);
+    }
+
+    return ["Overdue", "Due today", "Due soon", "Later", "No due date"]
+      .map((label) => ({
+        label,
+        tasks: groups.get(label) ?? [],
+      }))
+      .filter((group) => group.tasks.length > 0);
+  }, [filteredTasks]);
 
   async function handleCompleteTask(task: TaskRow) {
     setCompletingTaskId(task.id);
@@ -629,6 +723,7 @@ export default function TasksPage() {
           <StatTile label="Open" value={taskStats.open} />
           <StatTile label="Overdue" value={taskStats.overdue} />
           <StatTile label="Due today" value={taskStats.dueToday} />
+          <StatTile label="Due soon" value={taskStats.dueSoon} />
           <StatTile label="No due date" value={taskStats.noDueDate} />
         </div>
 
@@ -640,6 +735,7 @@ export default function TasksPage() {
               alignItems: "center",
               justifyContent: "space-between",
               flexWrap: "wrap",
+              width: "100%",
             }}
           >
             <div style={{ flex: "1 1 420px" }}>
@@ -651,17 +747,21 @@ export default function TasksPage() {
                   { label: "All open", value: "all" },
                   { label: "Overdue", value: "overdue" },
                   { label: "Due today", value: "due_today" },
+                  { label: "Due soon", value: "due_soon" },
                   { label: "No due date", value: "no_due" },
                 ]}
               />
             </div>
 
-            <ActionMenu
-              label="Agent filter"
-              open={openTaskMenuId === "tasks-filter"}
-              onOpenChange={(open) => setOpenTaskMenuId(open ? "tasks-filter" : null)}
-              items={ownerFilterItems}
-            />
+            <div style={{ marginLeft: "auto" }}>
+              <ActionMenu
+                label="Agent filter"
+                open={openTaskMenuId === "tasks-filter"}
+                onOpenChange={(open) => setOpenTaskMenuId(open ? "tasks-filter" : null)}
+                items={ownerFilterItems}
+                menuAlign="right"
+              />
+            </div>
           </div>
 
           <Input
@@ -679,15 +779,35 @@ export default function TasksPage() {
         ) : filteredTasks.length === 0 ? (
           <div style={{ color: "var(--mutedText)" }}>No open tasks found.</div>
         ) : (
-          <div style={{ display: "grid", gap: "var(--space-2)" }}>
-            {filteredTasks.map((task) => {
-              const href = entityHref(task);
-              const entityName = entityLabels[taskEntityKey(task)] ?? "Unknown";
-              const preview = notesPreview(task.notes);
-
-              return (
+          <div style={{ display: "grid", gap: "var(--space-4)" }}>
+            {taskGroups.map((group) => (
+              <section key={group.label} style={{ display: "grid", gap: "var(--space-2)" }}>
                 <div
-                  key={task.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "var(--space-3)",
+                    color: "var(--mutedText)",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                  }}
+                >
+                  <span>{group.label}</span>
+                  <span>{group.tasks.length}</span>
+                </div>
+
+                <div style={{ display: "grid", gap: "var(--space-2)" }}>
+                  {group.tasks.map((task) => {
+                    const href = entityHref(task);
+                    const entityName = entityLabels[taskEntityKey(task)] ?? "Unknown";
+                    const preview = notesPreview(task.notes);
+
+                    return (
+                      <div
+                        key={task.id}
                   style={{
                     display: "grid",
                     gap: "var(--space-3)",
@@ -863,11 +983,14 @@ export default function TasksPage() {
                         </Button>
                       </div>
                     </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
         )}
       </Card>
     </Page>
