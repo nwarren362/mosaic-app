@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { getActiveAgencyId } from "@/lib/agencyContext";
+import { createDomainEvent, dispatchDomainEvent } from "@/lib/workflows";
 import {
   ActionMenu,
   Button,
@@ -18,44 +19,48 @@ import {
   Textarea,
 } from "@/components/ui";
 
-type TaskEntityType = "artist" | "venue" | "gig" | "contact" | "workflow";
-type TaskFilter = "all" | "overdue" | "due_today" | "due_soon" | "no_due";
-type TaskOwnerFilter = "mine" | "agency" | string;
+import type {
+  AgencyMemberLookupRow,
+  ArtistLookupRow,
+  GigLookupRow,
+  TaskFilter,
+  TaskGroup,
+  TaskOwnerFilter,
+  TaskRow,
+  VenueLookupRow,
+} from "./taskTypes";
 
-type TaskRow = {
-  id: string;
-  agency_id: string;
-  entity_type: TaskEntityType;
-  entity_id: string;
-  summary: string;
-  notes: string | null;
-  due_at: string | null;
-  completed_at: string | null;
-  created_at: string;
-  assigned_to: string;
-};
+import {
+  isOverdue,
+  isDueToday,
+  isDueSoon,
+  buildCompletedTaskNotes,
+  canUseManagerTaskView,
+  compareTasksByUrgency,
+  entityHref,
+  entityLabel,
+  formatDate,
+  isAgencyOwnerFilter,
+  isEscalatedTask,
+  isMineOwnerFilter,
+  notesPreview,
+  possessiveName,
+  taskDueLabel,
+  taskDueTone,
+  taskEntityKey,
+  taskMatchesFilter,
+  taskUrgencyGroupLabel,
+  toDateInputValue,
+} from "./taskFilters";
 
-type ArtistLookupRow = {
-  id: string;
-  name: string;
-};
-
-type VenueLookupRow = {
-  id: string;
-  name: string;
-};
-
-type GigLookupRow = {
-  id: string;
-  title: string | null;
-  artists: { name: string } | null;
-};
-
-type AgencyMemberLookupRow = {
-  user_id: string;
-  display_name: string;
-  role?: string | null;
-};
+function shouldEscalateOverdueTask(task: TaskRow) {
+  return (
+    !task.completed_at &&
+    !task.is_escalated &&
+    !hasDeclinedManualEscalationForDueDate(task) &&
+    (task.overdue_days ?? 0) > 7
+  );
+}
 
 function startOfToday() {
   const date = new Date();
@@ -63,205 +68,50 @@ function startOfToday() {
   return date;
 }
 
-function endOfToday() {
-  const date = new Date();
-  date.setHours(23, 59, 59, 999);
+function overdueEscalationCutoff() {
+  const date = startOfToday();
+  date.setDate(date.getDate() - 7);
   return date;
 }
 
-function endOfDueSoonWindow() {
-  const date = endOfToday();
-  date.setDate(date.getDate() + 3);
-  return date;
+function shouldRemainEscalatedForDueDate(dueAt: string | null) {
+  if (!dueAt) return false;
+
+  const dueDate = new Date(dueAt);
+  return !Number.isNaN(dueDate.getTime()) && dueDate < overdueEscalationCutoff();
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "No due date";
+function taskEscalationDeclinedDueAt(task: TaskRow) {
+  const metadata = task.metadata;
 
-  const date = new Date(value);
+  if (!metadata || typeof metadata !== "object") return null;
 
-  if (Number.isNaN(date.getTime())) {
-    return "No due date";
-  }
-
-  return date.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  const declinedDueAt = metadata.manual_escalation_declined_for_due_at;
+  return typeof declinedDueAt === "string" ? declinedDueAt : null;
 }
 
-function toDateInputValue(value: string | null) {
-  if (!value) return "";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "";
-
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-
-  return `${yyyy}-${mm}-${dd}`;
+function hasDeclinedManualEscalationForDueDate(task: TaskRow) {
+  return Boolean(task.due_at && taskEscalationDeclinedDueAt(task) === task.due_at);
 }
 
-function taskDueTone(task: TaskRow) {
-  if (task.completed_at) return "muted";
-  if (!task.due_at) return "muted";
+function shouldPromptForManualEscalation(task: TaskRow, nextDueAt: string | null) {
+  if (!nextDueAt || task.completed_at || task.is_escalated) return false;
 
-  const dueDate = new Date(task.due_at);
+  const dueDateChanged =
+    toDateInputValue(task.due_at) !== toDateInputValue(nextDueAt);
+  if (!dueDateChanged) return false;
 
-  if (!Number.isNaN(dueDate.getTime()) && dueDate < startOfToday()) {
-    return "danger";
-  }
-
-  return "warning";
+  return shouldRemainEscalatedForDueDate(nextDueAt);
 }
 
-function isOverdue(task: TaskRow) {
-  if (!task.due_at || task.completed_at) return false;
-
-  const dueDate = new Date(task.due_at);
-  return !Number.isNaN(dueDate.getTime()) && dueDate < startOfToday();
-}
-
-function isDueToday(task: TaskRow) {
-  if (!task.due_at || task.completed_at) return false;
-
-  const dueDate = new Date(task.due_at);
-  return (
-    !Number.isNaN(dueDate.getTime()) &&
-    dueDate >= startOfToday() &&
-    dueDate <= endOfToday()
-  );
-}
-
-function isDueSoon(task: TaskRow) {
-  if (!task.due_at || task.completed_at) return false;
-  if (isOverdue(task) || isDueToday(task)) return false;
-
-  const dueDate = new Date(task.due_at);
-  return (
-    !Number.isNaN(dueDate.getTime()) &&
-    dueDate > endOfToday() &&
-    dueDate <= endOfDueSoonWindow()
-  );
-}
-
-function taskDueLabel(task: TaskRow) {
-  if (task.completed_at) return "Completed";
-  if (!task.due_at) return "No due date";
-  if (isOverdue(task)) return `Overdue · ${formatDate(task.due_at)}`;
-  if (isDueToday(task)) return "Due today";
-  if (isDueSoon(task)) return `Due soon · ${formatDate(task.due_at)}`;
-
-  return `Due ${formatDate(task.due_at)}`;
-}
-
-function entityHref(task: TaskRow) {
-  if (task.entity_type === "artist") return `/artists/${task.entity_id}#activity`;
-  if (task.entity_type === "venue") return `/venues/${task.entity_id}#activity`;
-  if (task.entity_type === "gig") return `/gigs/${task.entity_id}#activity`;
-  return null;
-}
-
-function entityLabel(entityType: TaskEntityType) {
-  return entityType.charAt(0).toUpperCase() + entityType.slice(1);
-}
-
-function taskEntityKey(task: TaskRow) {
-  return `${task.entity_type}:${task.entity_id}`;
-}
-
-function notesPreview(notes: string | null) {
-  const normalized = notes?.replace(/\s+/g, " ").trim();
-
-  if (!normalized) return null;
-
-  return normalized.length > 110 ? `${normalized.slice(0, 110)}…` : normalized;
-}
-
-function buildCompletedTaskNotes(existingNotes: string | null, completionNote: string) {
-  const completedLine = `Completed ${new Date().toLocaleString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })}`;
-  const trimmedCompletionNote = completionNote.trim();
-  const trimmedExistingNotes = existingNotes?.trim() ?? "";
-
-  const completionBlock = [
-    completedLine,
-    trimmedCompletionNote ? "" : null,
-    trimmedCompletionNote || null,
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  if (!trimmedExistingNotes) {
-    return completionBlock;
-  }
-
-  return `${completionBlock}\n\n--------------------------------\nOriginal task note below.\n--------------------------------\n${trimmedExistingNotes}`;
-}
-
-function taskMatchesFilter(task: TaskRow, filter: TaskFilter) {
-  if (filter === "overdue") return isOverdue(task);
-  if (filter === "due_today") return isDueToday(task);
-  if (filter === "due_soon") return isDueSoon(task);
-  if (filter === "no_due") return !task.due_at;
-  return true;
-}
-
-function taskUrgencyRank(task: TaskRow) {
-  if (isOverdue(task)) return 0;
-  if (isDueToday(task)) return 1;
-  if (isDueSoon(task)) return 2;
-  if (!task.due_at) return 4;
-  return 3;
-}
-
-function taskUrgencyGroupLabel(task: TaskRow) {
-  if (isOverdue(task)) return "Overdue";
-  if (isDueToday(task)) return "Due today";
-  if (isDueSoon(task)) return "Due soon";
-  if (!task.due_at) return "No due date";
-  return "Later";
-}
-
-function compareTasksByUrgency(a: TaskRow, b: TaskRow) {
-  const urgencyDifference = taskUrgencyRank(a) - taskUrgencyRank(b);
-  if (urgencyDifference !== 0) return urgencyDifference;
-
-  const aDue = a.due_at ? new Date(a.due_at).getTime() : Number.POSITIVE_INFINITY;
-  const bDue = b.due_at ? new Date(b.due_at).getTime() : Number.POSITIVE_INFINITY;
-
-  if (aDue !== bDue) return aDue - bDue;
-
-  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-}
-
-type TaskGroup = {
-  label: string;
-  tasks: TaskRow[];
-};
-
-function isAgencyOwnerFilter(value: TaskOwnerFilter) {
-  return value === "agency";
-}
-
-function isMineOwnerFilter(value: TaskOwnerFilter) {
-  return value === "mine";
-}
-
-function possessiveName(name: string) {
-  return name.endsWith("s") ? `${name}' tasks` : `${name}'s tasks`;
-}
-
-function canUseManagerTaskView(role?: string | null) {
-  return ["agency_admin", "admin", "manager", "owner"].includes(role ?? "");
+function mergeTaskMetadata(
+  metadata: Record<string, unknown> | null,
+  values: Record<string, unknown>,
+) {
+  return {
+    ...(metadata ?? {}),
+    ...values,
+  };
 }
 
 export default function TasksPage() {
@@ -285,6 +135,7 @@ export default function TasksPage() {
   const [editTaskAssignedTo, setEditTaskAssignedTo] = useState("");
   const [savingTaskEdit, setSavingTaskEdit] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [manualEscalationTask, setManualEscalationTask] = useState<TaskRow | null>(null);
 
   async function loadTasks() {
     setLoading(true);
@@ -325,10 +176,11 @@ export default function TasksPage() {
 
 
     let taskQuery = supabase
-      .from("activity_log")
-      .select("id, agency_id, entity_type, entity_id, summary, notes, due_at, completed_at, created_at, assigned_to")
+      .from("task_status_view")
+      .select(
+        "id, agency_id, entity_type, entity_id, summary, notes, due_at, completed_at, created_at, assigned_to, metadata, escalated_at, escalation_level, escalation_workflow_event_id, is_overdue, is_due_today, is_due_soon, is_escalated, overdue_days"
+      )
       .eq("agency_id", activeAgencyId)
-      .eq("activity_type", "task")
       .is("completed_at", null)
       .order("due_at", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: false })
@@ -352,8 +204,16 @@ export default function TasksPage() {
     }
 
     const loadedTasks = data as TaskRow[];
+    const escalatedCount = await escalateOverdueTasks(loadedTasks, activeAgencyId, user.id);
+
     setTasks(loadedTasks);
     await loadEntityLabels(loadedTasks, activeAgencyId);
+
+    if (escalatedCount > 0) {
+      setMessage(
+        `${escalatedCount} overdue ${escalatedCount === 1 ? "task was" : "tasks were"} marked as escalated.`
+      );
+    }
   }
 
   async function loadAgencyMembers(agencyId: string, currentUserId: string) {
@@ -498,6 +358,93 @@ export default function TasksPage() {
     setEntityLabels(nextLabels);
   }
 
+  async function hasTaskAlreadyBeenEscalated(agencyId: string, taskId: string) {
+    const { data, error } = await supabase
+      .from("workflow_events")
+      .select("id")
+      .eq("agency_id", agencyId)
+      .eq("event_type", "task.escalated")
+      .contains("metadata", { original_task_id: taskId })
+      .limit(1);
+
+    if (error) {
+      console.warn("Failed to check task escalation history:", error.message);
+      return true;
+    }
+
+    return (data ?? []).length > 0;
+  }
+
+  async function escalateOverdueTasks(
+    loadedTasks: TaskRow[],
+    agencyId: string,
+    actorUserId: string
+  ) {
+    const candidates = loadedTasks.filter(shouldEscalateOverdueTask);
+    let escalatedCount = 0;
+
+    for (const task of candidates) {
+      const alreadyEscalated = await hasTaskAlreadyBeenEscalated(agencyId, task.id);
+      if (alreadyEscalated) continue;
+
+      const event = createDomainEvent({
+        type: "task.escalated",
+        agencyId,
+        entityType: "task",
+        entityId: task.id,
+        actorUserId,
+        metadata: {
+          original_task_id: task.id,
+          original_task_summary: task.summary,
+          original_entity_type: task.entity_type,
+          original_entity_id: task.entity_id,
+          assigned_to: task.assigned_to,
+          due_at: task.due_at,
+          created_at: task.created_at,
+          escalation_reason: "Task is more than 7 days overdue.",
+        },
+      });
+
+      const workflowResult = await dispatchDomainEvent(
+        {
+          supabase,
+          agencyId,
+          actor: { userId: actorUserId },
+        },
+        event
+      );
+
+      if (workflowResult.ok) {
+        const escalatedAt = new Date().toISOString();
+
+        const { error: updateError } = await supabase
+          .from("activity_log")
+          .update({
+            escalated_at: escalatedAt,
+            escalation_level: "overdue_7_days",
+            escalation_workflow_event_id: workflowResult.workflowEventId,
+          })
+          .eq("id", task.id)
+          .eq("agency_id", agencyId);
+
+        if (updateError) {
+          console.warn("Failed to mark task as escalated:", updateError.message);
+        } else {
+          task.escalated_at = escalatedAt;
+          task.escalation_level = "overdue_7_days";
+          task.escalation_workflow_event_id = workflowResult.workflowEventId;
+          task.is_escalated = true;
+        }
+
+        escalatedCount += 1;
+      } else {
+        console.warn("Task escalation workflow did not complete cleanly", workflowResult.failures);
+      }
+    }
+
+    return escalatedCount;
+  }
+
   useEffect(() => {
     void loadTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -507,6 +454,7 @@ export default function TasksPage() {
     () => ({
       open: tasks.length,
       overdue: tasks.filter(isOverdue).length,
+      escalated: tasks.filter(isEscalatedTask).length,
       dueToday: tasks.filter(isDueToday).length,
       dueSoon: tasks.filter(isDueSoon).length,
       noDueDate: tasks.filter((task) => !task.due_at).length,
@@ -536,7 +484,7 @@ export default function TasksPage() {
       groups.set(label, [...(groups.get(label) ?? []), task]);
     }
 
-    return ["Overdue", "Due today", "Due soon", "Later", "No due date"]
+    return ["Escalated", "Overdue", "Due today", "Due soon", "Later", "No due date"]
       .map((label) => ({
         label,
         tasks: groups.get(label) ?? [],
@@ -598,7 +546,45 @@ export default function TasksPage() {
     setEditTaskAssignedTo("");
   }
 
-  async function handleSaveTaskEdit(task: TaskRow) {
+  async function markTaskAsEscalated(task: TaskRow, actorUserId: string) {
+    const event = createDomainEvent({
+      type: "task.escalated",
+      agencyId: task.agency_id,
+      entityType: "task",
+      entityId: task.id,
+      actorUserId,
+      metadata: {
+        original_task_id: task.id,
+        original_task_summary: task.summary,
+        original_entity_type: task.entity_type,
+        original_entity_id: task.entity_id,
+        assigned_to: editTaskAssignedTo,
+        due_at: editTaskDueDate
+          ? new Date(`${editTaskDueDate}T12:00:00`).toISOString()
+          : null,
+        created_at: task.created_at,
+        escalation_reason: "User confirmed manual escalation during task edit.",
+      },
+    });
+
+    const workflowResult = await dispatchDomainEvent(
+      {
+        supabase,
+        agencyId: task.agency_id,
+        actor: { userId: actorUserId },
+      },
+      event,
+    );
+
+    if (!workflowResult.ok) {
+      console.warn("Task escalation workflow did not complete cleanly", workflowResult.failures);
+      return null;
+    }
+
+    return workflowResult.workflowEventId;
+  }
+
+  async function saveTaskEdit(task: TaskRow, flagAsEscalated: boolean) {
     const trimmedSummary = editTaskSummary.trim();
 
     if (!trimmedSummary) {
@@ -608,14 +594,69 @@ export default function TasksPage() {
 
     setSavingTaskEdit(true);
 
+    const nextDueAt = editTaskDueDate
+      ? new Date(`${editTaskDueDate}T12:00:00`).toISOString()
+      : null;
+
+    const shouldClearEscalation =
+      task.is_escalated && !shouldRemainEscalatedForDueDate(nextDueAt);
+
+    const metadata = shouldClearEscalation
+      ? mergeTaskMetadata(task.metadata, { manual_escalation_declined_for_due_at: null })
+      : flagAsEscalated
+        ? mergeTaskMetadata(task.metadata, { manual_escalation_declined_for_due_at: null })
+        : shouldPromptForManualEscalation(task, nextDueAt)
+          ? mergeTaskMetadata(task.metadata, { manual_escalation_declined_for_due_at: nextDueAt })
+          : task.metadata;
+
+    let escalationFields = {};
+
+    if (flagAsEscalated) {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setSavingTaskEdit(false);
+        setMessage(userError?.message ?? "You must be signed in to escalate this task.");
+        return;
+      }
+
+      const workflowEventId = await markTaskAsEscalated(task, user.id);
+
+      if (!workflowEventId) {
+        setSavingTaskEdit(false);
+        setMessage("The task was not saved because the escalation workflow failed. Please try again.");
+        return;
+      }
+
+      escalationFields = {
+        escalated_at: new Date().toISOString(),
+        escalation_level: "overdue_7_days",
+        escalation_workflow_event_id: workflowEventId,
+      };
+    }
+
+    const updatePayload = {
+      summary: trimmedSummary,
+      notes: editTaskNotes.trim() || null,
+      due_at: nextDueAt,
+      assigned_to: editTaskAssignedTo,
+      metadata,
+      ...escalationFields,
+      ...(shouldClearEscalation
+        ? {
+            escalated_at: null,
+            escalation_level: null,
+            escalation_workflow_event_id: null,
+          }
+        : {}),
+    };
+
     const { data: updatedRows, error } = await supabase
       .from("activity_log")
-      .update({
-        summary: trimmedSummary,
-        notes: editTaskNotes.trim() || null,
-        due_at: editTaskDueDate ? new Date(`${editTaskDueDate}T12:00:00`).toISOString() : null,
-        assigned_to: editTaskAssignedTo,
-      })
+      .update(updatePayload)
       .eq("id", task.id)
       .eq("agency_id", task.agency_id)
       .select("id");
@@ -632,8 +673,29 @@ export default function TasksPage() {
       return;
     }
 
+    setManualEscalationTask(null);
     cancelEditingTask();
     await loadTasks();
+  }
+
+  async function handleSaveTaskEdit(task: TaskRow) {
+    const trimmedSummary = editTaskSummary.trim();
+
+    if (!trimmedSummary) {
+      setMessage("Task summary is required.");
+      return;
+    }
+
+    const nextDueAt = editTaskDueDate
+      ? new Date(`${editTaskDueDate}T12:00:00`).toISOString()
+      : null;
+
+    if (shouldPromptForManualEscalation(task, nextDueAt)) {
+      setManualEscalationTask(task);
+      return;
+    }
+
+    await saveTaskEdit(task, false);
   }
 
   async function handleDeleteTask(task: TaskRow) {
@@ -711,6 +773,60 @@ export default function TasksPage() {
     <Page title={`${pageTitle} (${filteredTasks.length})`}>
       {message ? <p style={{ color: "var(--mutedText)" }}>{message}</p> : null}
 
+      {manualEscalationTask ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="manual-escalation-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 50,
+            display: "grid",
+            placeItems: "center",
+            padding: "var(--space-4)",
+            background: "rgba(0,0,0,0.55)",
+          }}
+        >
+          <div style={{ width: "min(420px, 100%)" }}>
+            <Card>
+              <div style={{ display: "grid", gap: "var(--space-3)" }}>
+                <div id="manual-escalation-title" style={{ fontWeight: 800, color: "var(--text)" }}>
+                  Task was due more than seven days ago. Flag as Escalated?
+                </div>
+                <div style={{ color: "var(--mutedText)", fontSize: 14 }}>
+                  Choose Yes to mark this task as escalated, or No to save the task without escalating it.
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: "var(--space-2)",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => saveTaskEdit(manualEscalationTask, false)}
+                    disabled={savingTaskEdit}
+                  >
+                    No
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => saveTaskEdit(manualEscalationTask, true)}
+                    disabled={savingTaskEdit}
+                  >
+                    Yes
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
+      ) : null}
+
       <Card>
         <div
           style={{
@@ -722,29 +838,22 @@ export default function TasksPage() {
         >
           <StatTile label="Open" value={taskStats.open} />
           <StatTile label="Overdue" value={taskStats.overdue} />
+          <StatTile label="Escalated" value={taskStats.escalated} />
           <StatTile label="Due today" value={taskStats.dueToday} />
           <StatTile label="Due soon" value={taskStats.dueSoon} />
           <StatTile label="No due date" value={taskStats.noDueDate} />
         </div>
 
         <div style={{ display: "grid", gap: "var(--space-3)" }}>
-          <div
-            style={{
-              display: "flex",
-              gap: "var(--space-3)",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              width: "100%",
-            }}
-          >
-            <div style={{ flex: "1 1 420px" }}>
+          <div style={{ display: "grid", gap: "var(--space-3)", width: "100%" }}>
+            <div style={{ width: "100%", minWidth: 0 }}>
               <SegmentedControl
                 ariaLabel="Task filter"
                 value={filter}
                 onChange={setFilter}
                 options={[
                   { label: "All open", value: "all" },
+                  { label: "Escalated", value: "escalated" },
                   { label: "Overdue", value: "overdue" },
                   { label: "Due today", value: "due_today" },
                   { label: "Due soon", value: "due_soon" },
@@ -753,13 +862,14 @@ export default function TasksPage() {
               />
             </div>
 
-            <div style={{ marginLeft: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
               <ActionMenu
                 label="Agent filter"
                 open={openTaskMenuId === "tasks-filter"}
                 onOpenChange={(open) => setOpenTaskMenuId(open ? "tasks-filter" : null)}
                 items={ownerFilterItems}
                 menuAlign="right"
+                menuPosition="fixedRight"
               />
             </div>
           </div>
@@ -768,7 +878,7 @@ export default function TasksPage() {
             placeholder="Search tasks, notes, artists, venues or gigs…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            style={{ minWidth: 240 }}
+            style={{ width: "100%", minWidth: 0 }}
           />
         </div>
       </Card>
@@ -811,18 +921,22 @@ export default function TasksPage() {
                   style={{
                     display: "grid",
                     gap: "var(--space-3)",
-                    border: "1px solid rgba(255,255,255,0.10)",
+                    border: isEscalatedTask(task)
+                      ? "1px solid rgba(248,113,113,0.40)"
+                      : "1px solid rgba(255,255,255,0.10)",
                     borderRadius: "var(--radius-lg)",
                     padding: "12px 12px",
-                    background: "rgba(255,255,255,0.02)",
+                    background: isEscalatedTask(task)
+                      ? "rgba(127,29,29,0.14)"
+                      : "rgba(255,255,255,0.02)",
                   }}
                 >
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr auto",
+                      gridTemplateColumns: "minmax(0, 1fr) auto",
                       gap: "var(--space-3)",
-                      alignItems: "center",
+                      alignItems: "start",
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
@@ -848,6 +962,14 @@ export default function TasksPage() {
                         )}
                         <span>·</span>
                         <span>Created {formatDate(task.created_at)}</span>
+                        {isEscalatedTask(task) && task.escalated_at ? (
+                          <>
+                            <span>·</span>
+                            <span style={{ color: "#fecaca", fontWeight: 800 }}>
+                              Escalated {formatDate(task.escalated_at)}
+                            </span>
+                          </>
+                        ) : null}
                         {preview ? (
                           <>
                             <span>·</span>
@@ -855,8 +977,8 @@ export default function TasksPage() {
                               style={{
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                maxWidth: 520,
+                                whiteSpace: "normal",
+                                maxWidth: "100%",
                               }}
                               title={preview}
                             >
@@ -870,13 +992,16 @@ export default function TasksPage() {
                     <div
                       style={{
                         display: "flex",
-                        alignItems: "center",
+                        alignItems: "flex-start",
                         justifyContent: "flex-end",
                         gap: "var(--space-2)",
                         flexWrap: "wrap",
+                        maxWidth: 156,
                       }}
                     >
-                      <StatusBadge tone={taskDueTone(task)}>{taskDueLabel(task)}</StatusBadge>
+                      <StatusBadge tone={taskDueTone(task)} wrap>
+                        {taskDueLabel(task)}
+                      </StatusBadge>
                       <ActionMenu
                         label="Task actions"
                         open={openTaskMenuId === task.id}

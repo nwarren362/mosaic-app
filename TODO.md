@@ -62,6 +62,7 @@ This is a hobby project. Keep momentum: do 1–2 cleanup tasks per milestone.
 * sidebar navigation including Tasks workspace
 * task menu abstracted into UI pattern and implemented into artists_id, gigs_id, and venues_id
 * Implemented task re-assignment to another user via the /tasks page (under edit task)
+* improved mobile UI in response to problems identified when testing the /tasks page
 
 ### Workflow architecture foundation
 * Domain event dispatcher
@@ -75,13 +76,46 @@ This is a hobby project. Keep momentum: do 1–2 cleanup tasks per milestone.
 ## Active backlog
 
 ### Workflow + automation
+
+#### Workflow types
+- [ ] reusable approval workflow
+- [ ] reusable request workflow
 - [ ] workflow templates
-- [ ] reusable approval/request flows
-- [ ] automated reminders/escalations
+
+#### Task automation
+- [ ] overdue task escalation workflow
+- [ ] automated reminders
 - [ ] recurring tasks
+- [ ] task reassignment workflow
+
+#### Notifications
 - [ ] notifications framework
-- [ ] workflow analytics + operational reporting
-- [ ] task reassignment workflows
+- [ ] email notifications
+- [ ] in-app notifications
+
+#### Workflow analytics
+- [ ] workflow duration metrics
+- [ ] workflow bottleneck reporting
+- [ ] agent performance metrics
+- [ ] workflow analytics dashboard
+
+    Priority order
+    If I were ordering these by implementation priority, I’d now rank them:
+    1.	overdue task escalation workflow
+    2.	automated reminders
+    3.	workflow duration metrics
+    4.	agent performance metrics
+    5.	workflow bottleneck reporting
+    6.	workflow analytics dashboard
+    7.	reusable request workflow
+    8.	reusable approval workflow
+    9.	workflow templates
+    10.	recurring tasks
+    11.	notifications framework
+    12.	in-app notifications
+    13.	email notifications
+    14.	task reassignment workflow
+
 
 ### Communications + CRM
 - [ ] communications logging

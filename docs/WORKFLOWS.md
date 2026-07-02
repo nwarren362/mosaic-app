@@ -3,6 +3,15 @@
 ## Philosophy
 
 Mosaic workflows are designed around a lightweight event-driven architecture.
+Workflows should enrich existing work wherever possible, not create duplicate work.
+
+The only time a workflow should create a new task is when it genuinely represents new work.
+
+Examples:
+
+* ✔ “Gig cancelled” → notify stakeholders. (New work.)
+* ✔ “Contract signed” → invoice client. (New work.)
+* ✔ “Tour confirmed” → book accommodation. (New work.)
 
 The goal is to:
 

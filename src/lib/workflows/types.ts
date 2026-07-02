@@ -9,7 +9,8 @@ export type WorkflowEventType =
   | "gig.cancelled"
   | "task.created"
   | "task.completed"
-  | "task.reassigned";
+  | "task.reassigned"
+  | "task.escalated";
 
 export type WorkflowActor = {
   userId: string;

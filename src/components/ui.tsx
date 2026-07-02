@@ -205,12 +205,14 @@ export function ActionMenu({
   onOpenChange,
   items,
   menuAlign = "right",
+  menuPosition = "absolute",
 }: {
   label?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   items: ActionMenuItem[];
   menuAlign?: "left" | "right";
+  menuPosition?: "absolute" | "fixedRight";
 }) {
   return (
     <div style={{ position: "relative" }}>
@@ -234,14 +236,19 @@ export function ActionMenu({
       {open ? (
         <div
           style={{
-            position: "absolute",
-            ...(menuAlign === "right" ? { right: 0 } : { left: 0 }),
-            top: "calc(100% + 6px)",
+            position: menuPosition === "fixedRight" ? "fixed" : "absolute",
+            ...(menuPosition === "fixedRight"
+              ? { right: 16, top: 96 }
+              : menuAlign === "right"
+                ? { right: 0, top: "calc(100% + 6px)" }
+                : { left: 0, top: "calc(100% + 6px)" }),
             zIndex: 30,
             display: "grid",
             gap: 4,
             minWidth: 150,
             maxWidth: "calc(100vw - 32px)",
+            maxHeight: "calc(100vh - 128px)",
+            overflowY: "auto",
             padding: 6,
             border: "1px solid rgba(255,255,255,0.14)",
             borderRadius: "var(--radius-lg)",
@@ -300,13 +307,16 @@ export function SegmentedControl<T extends string>({
       role="radiogroup"
       aria-label={ariaLabel}
       style={{
-        display: "inline-flex",
+        display: "flex",
         alignItems: "center",
         gap: 2,
         padding: 3,
         border: "1px solid var(--border)",
         borderRadius: 999,
         background: "rgba(255,255,255,0.03)",
+        maxWidth: "100%",
+        overflowX: "auto",
+        WebkitOverflowScrolling: "touch",
       }}
     >
       {options.map((option) => {
@@ -331,6 +341,7 @@ export function SegmentedControl<T extends string>({
               cursor: "pointer",
               transition: "var(--transition-fast)",
               whiteSpace: "nowrap",
+              flex: "0 0 auto",
             }}
           >
             {option.label}
@@ -520,9 +531,11 @@ export function Badge({
 export function StatusBadge({
   children,
   tone = "muted",
+  wrap = false,
 }: {
   children: React.ReactNode;
   tone?: "success" | "warning" | "danger" | "muted";
+  wrap?: boolean;
 }) {
   const tones = {
     success: {
@@ -561,7 +574,13 @@ export function StatusBadge({
         fontSize: 12,
         textTransform: "uppercase",
         letterSpacing: 0.6,
-        whiteSpace: "nowrap",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        lineHeight: 1.15,
+        whiteSpace: wrap ? "normal" : "nowrap",
+        maxWidth: wrap ? 116 : undefined,
       }}
     >
       {children}

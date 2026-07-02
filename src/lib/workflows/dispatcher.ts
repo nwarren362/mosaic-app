@@ -1,5 +1,6 @@
 import type { DomainEvent, WorkflowContext } from "./types";
 import { handleGigCancelled, handleGigConfirmed } from "./gigWorkflows";
+import { handleTaskEscalated } from "./taskWorkflows";
 import { saveWorkflowEvent } from "./eventStore";
 
 type WorkflowHandler = (context: WorkflowContext, event: DomainEvent) => Promise<void>;
@@ -7,6 +8,7 @@ type WorkflowHandler = (context: WorkflowContext, event: DomainEvent) => Promise
 const handlers: WorkflowHandler[] = [
   handleGigCancelled,
   handleGigConfirmed,
+  handleTaskEscalated,
 ];
 
 export async function dispatchDomainEvent(context: WorkflowContext, event: DomainEvent) {
