@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { getActiveAgencyId } from "@/lib/agencyContext";
-import { createDomainEvent, dispatchDomainEvent } from "@/lib/workflows";
 import {
   ActionMenu,
   Button,
@@ -12,30 +10,23 @@ import {
   Field,
   Input,
   Page,
-  SegmentedControl,
   Select,
-  StatTile,
   StatusBadge,
   Textarea,
 } from "@/components/ui";
 
 import type {
   AgencyMemberLookupRow,
-  ArtistLookupRow,
-  GigLookupRow,
   TaskFilter,
   TaskGroup,
   TaskOwnerFilter,
   TaskRow,
-  VenueLookupRow,
 } from "./taskTypes";
 
 import {
   isOverdue,
   isDueToday,
   isDueSoon,
-  buildCompletedTaskNotes,
-  canUseManagerTaskView,
   compareTasksByUrgency,
   entityHref,
   entityLabel,
@@ -53,66 +44,24 @@ import {
   toDateInputValue,
 } from "./taskFilters";
 
-function shouldEscalateOverdueTask(task: TaskRow) {
-  return (
-    !task.completed_at &&
-    !task.is_escalated &&
-    !hasDeclinedManualEscalationForDueDate(task) &&
-    (task.overdue_days ?? 0) > 7
-  );
-}
+import {
+  ESCALATION_LEVEL_OVERDUE_7_DAYS,
+  dueAtFromDateInput,
+  editTaskMetadata,
+  shouldPromptForManualEscalation,
+} from "./taskWorkflow";
 
-function startOfToday() {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-function overdueEscalationCutoff() {
-  const date = startOfToday();
-  date.setDate(date.getDate() - 7);
-  return date;
-}
-
-function shouldRemainEscalatedForDueDate(dueAt: string | null) {
-  if (!dueAt) return false;
-
-  const dueDate = new Date(dueAt);
-  return !Number.isNaN(dueDate.getTime()) && dueDate < overdueEscalationCutoff();
-}
-
-function taskEscalationDeclinedDueAt(task: TaskRow) {
-  const metadata = task.metadata;
-
-  if (!metadata || typeof metadata !== "object") return null;
-
-  const declinedDueAt = metadata.manual_escalation_declined_for_due_at;
-  return typeof declinedDueAt === "string" ? declinedDueAt : null;
-}
-
-function hasDeclinedManualEscalationForDueDate(task: TaskRow) {
-  return Boolean(task.due_at && taskEscalationDeclinedDueAt(task) === task.due_at);
-}
-
-function shouldPromptForManualEscalation(task: TaskRow, nextDueAt: string | null) {
-  if (!nextDueAt || task.completed_at || task.is_escalated) return false;
-
-  const dueDateChanged =
-    toDateInputValue(task.due_at) !== toDateInputValue(nextDueAt);
-  if (!dueDateChanged) return false;
-
-  return shouldRemainEscalatedForDueDate(nextDueAt);
-}
-
-function mergeTaskMetadata(
-  metadata: Record<string, unknown> | null,
-  values: Record<string, unknown>,
-) {
-  return {
-    ...(metadata ?? {}),
-    ...values,
-  };
-}
+import {
+  completeTask,
+  createManualTaskEscalation,
+  deleteTask,
+  escalateOverdueTasks,
+  fetchAgencyMembersForTasks,
+  fetchOpenTasks,
+  fetchTaskEntityLabels,
+  getSignedInUser,
+  updateTask,
+} from "./taskQueries";
 
 export default function TasksPage() {
   const [loading, setLoading] = useState(true);
@@ -157,7 +106,7 @@ export default function TasksPage() {
     const {
       data: { user },
       error: userError,
-    } = await supabase.auth.getUser();
+    } = await getSignedInUser();
 
     if (userError || !user) {
       setTasks([]);
@@ -171,28 +120,13 @@ export default function TasksPage() {
     }
 
     setCurrentUserId(user.id);
-    const userCanManageAgencyTasks = await loadAgencyMembers(activeAgencyId, user.id);
+
+    const { members, canManageAgencyTasks: userCanManageAgencyTasks } =
+      await fetchAgencyMembersForTasks(activeAgencyId, user.id);
+    setAgencyMembers(members);
     setCanManageAgencyTasks(userCanManageAgencyTasks);
 
-
-    let taskQuery = supabase
-      .from("task_status_view")
-      .select(
-        "id, agency_id, entity_type, entity_id, summary, notes, due_at, completed_at, created_at, assigned_to, metadata, escalated_at, escalation_level, escalation_workflow_event_id, is_overdue, is_due_today, is_due_soon, is_escalated, overdue_days"
-      )
-      .eq("agency_id", activeAgencyId)
-      .is("completed_at", null)
-      .order("due_at", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .limit(200);
-
-    if (isMineOwnerFilter(ownerFilter)) {
-      taskQuery = taskQuery.eq("assigned_to", user.id);
-    } else if (!isAgencyOwnerFilter(ownerFilter)) {
-      taskQuery = taskQuery.eq("assigned_to", ownerFilter);
-    }
-
-    const { data, error } = await taskQuery;
+    const { data, error } = await fetchOpenTasks(activeAgencyId, ownerFilter, user.id);
 
     setLoading(false);
 
@@ -207,242 +141,13 @@ export default function TasksPage() {
     const escalatedCount = await escalateOverdueTasks(loadedTasks, activeAgencyId, user.id);
 
     setTasks(loadedTasks);
-    await loadEntityLabels(loadedTasks, activeAgencyId);
+    setEntityLabels(await fetchTaskEntityLabels(loadedTasks, activeAgencyId));
 
     if (escalatedCount > 0) {
       setMessage(
         `${escalatedCount} overdue ${escalatedCount === 1 ? "task was" : "tasks were"} marked as escalated.`
       );
     }
-  }
-
-  async function loadAgencyMembers(agencyId: string, currentUserId: string) {
-    const { data: membershipRows, error: membershipError } = await supabase
-      .from("agency_memberships")
-      .select("user_id, role")
-      .eq("agency_id", agencyId);
-
-    if (membershipError || !membershipRows) {
-      if (membershipError) {
-        console.warn("Failed to load agency memberships for task filters:", membershipError.message);
-      }
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      setAgencyMembers([
-        {
-          user_id: currentUserId,
-          display_name: user?.email ?? "Me",
-          role: null,
-        },
-      ]);
-      return false;
-    }
-
-    const userIds = Array.from(
-      new Set(
-        membershipRows
-          .map((membership) => membership.user_id as string | null)
-          .filter((userId): userId is string => Boolean(userId))
-      )
-    );
-
-    if (!userIds.includes(currentUserId)) {
-      userIds.unshift(currentUserId);
-    }
-
-    const roleByUserId = new Map(
-      (membershipRows ?? []).map((membership) => [
-        membership.user_id as string,
-        membership.role as string | null,
-      ])
-    );
-
-    const currentUserRole = roleByUserId.get(currentUserId) ?? null;
-    const userCanManageAgencyTasks = canUseManagerTaskView(currentUserRole);
-
-    const { data: profileRows, error: profileError } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", userIds);
-
-    if (profileError) {
-      console.warn("Failed to load task assignee profiles:", profileError.message);
-    }
-
-    const profileById = new Map(
-      (profileRows ?? []).map((profile) => [
-        profile.id as string,
-        {
-          full_name: profile.full_name as string | null,
-        },
-      ])
-    );
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const members = userIds
-      .map((userId) => {
-        const profile = profileById.get(userId);
-        const displayName =
-          profile?.full_name?.trim() ||
-          (userId === currentUserId ? user?.email ?? "Me" : "Unknown agent");
-
-        return {
-          user_id: userId,
-          display_name: userId === currentUserId ? `${displayName} (me)` : displayName,
-          role: roleByUserId.get(userId) ?? null,
-        };
-      })
-      .sort((a, b) => {
-        if (a.user_id === currentUserId) return -1;
-        if (b.user_id === currentUserId) return 1;
-        return a.display_name.localeCompare(b.display_name);
-      });
-
-    setAgencyMembers(members);
-    return userCanManageAgencyTasks;
-  }
-
-  async function loadEntityLabels(loadedTasks: TaskRow[], agencyId: string) {
-    const artistIds = loadedTasks
-      .filter((task) => task.entity_type === "artist")
-      .map((task) => task.entity_id);
-
-    const venueIds = loadedTasks
-      .filter((task) => task.entity_type === "venue")
-      .map((task) => task.entity_id);
-
-    const gigIds = loadedTasks
-      .filter((task) => task.entity_type === "gig")
-      .map((task) => task.entity_id);
-
-    const [artistResult, venueResult, gigResult] = await Promise.all([
-      artistIds.length > 0
-        ? supabase.from("artists").select("id, name").eq("agency_id", agencyId).in("id", artistIds)
-        : Promise.resolve({ data: [], error: null }),
-      venueIds.length > 0
-        ? supabase.from("venues").select("id, name").eq("agency_id", agencyId).in("id", venueIds)
-        : Promise.resolve({ data: [], error: null }),
-      gigIds.length > 0
-        ? supabase
-            .from("gigs")
-            .select("id, title, artists:artists(name)")
-            .eq("agency_id", agencyId)
-            .in("id", gigIds)
-        : Promise.resolve({ data: [], error: null }),
-    ]);
-
-    if (artistResult.error) console.warn("Failed to load artist task labels:", artistResult.error.message);
-    if (venueResult.error) console.warn("Failed to load venue task labels:", venueResult.error.message);
-    if (gigResult.error) console.warn("Failed to load gig task labels:", gigResult.error.message);
-
-    const nextLabels: Record<string, string> = {};
-
-    for (const artist of (artistResult.data ?? []) as ArtistLookupRow[]) {
-      nextLabels[`artist:${artist.id}`] = artist.name;
-    }
-
-    for (const venue of (venueResult.data ?? []) as VenueLookupRow[]) {
-      nextLabels[`venue:${venue.id}`] = venue.name;
-    }
-
-    for (const gig of (gigResult.data ?? []) as unknown as GigLookupRow[]) {
-      nextLabels[`gig:${gig.id}`] = gig.title?.trim() || gig.artists?.name || "Untitled gig";
-    }
-
-    setEntityLabels(nextLabels);
-  }
-
-  async function hasTaskAlreadyBeenEscalated(agencyId: string, taskId: string) {
-    const { data, error } = await supabase
-      .from("workflow_events")
-      .select("id")
-      .eq("agency_id", agencyId)
-      .eq("event_type", "task.escalated")
-      .contains("metadata", { original_task_id: taskId })
-      .limit(1);
-
-    if (error) {
-      console.warn("Failed to check task escalation history:", error.message);
-      return true;
-    }
-
-    return (data ?? []).length > 0;
-  }
-
-  async function escalateOverdueTasks(
-    loadedTasks: TaskRow[],
-    agencyId: string,
-    actorUserId: string
-  ) {
-    const candidates = loadedTasks.filter(shouldEscalateOverdueTask);
-    let escalatedCount = 0;
-
-    for (const task of candidates) {
-      const alreadyEscalated = await hasTaskAlreadyBeenEscalated(agencyId, task.id);
-      if (alreadyEscalated) continue;
-
-      const event = createDomainEvent({
-        type: "task.escalated",
-        agencyId,
-        entityType: "task",
-        entityId: task.id,
-        actorUserId,
-        metadata: {
-          original_task_id: task.id,
-          original_task_summary: task.summary,
-          original_entity_type: task.entity_type,
-          original_entity_id: task.entity_id,
-          assigned_to: task.assigned_to,
-          due_at: task.due_at,
-          created_at: task.created_at,
-          escalation_reason: "Task is more than 7 days overdue.",
-        },
-      });
-
-      const workflowResult = await dispatchDomainEvent(
-        {
-          supabase,
-          agencyId,
-          actor: { userId: actorUserId },
-        },
-        event
-      );
-
-      if (workflowResult.ok) {
-        const escalatedAt = new Date().toISOString();
-
-        const { error: updateError } = await supabase
-          .from("activity_log")
-          .update({
-            escalated_at: escalatedAt,
-            escalation_level: "overdue_7_days",
-            escalation_workflow_event_id: workflowResult.workflowEventId,
-          })
-          .eq("id", task.id)
-          .eq("agency_id", agencyId);
-
-        if (updateError) {
-          console.warn("Failed to mark task as escalated:", updateError.message);
-        } else {
-          task.escalated_at = escalatedAt;
-          task.escalation_level = "overdue_7_days";
-          task.escalation_workflow_event_id = workflowResult.workflowEventId;
-          task.is_escalated = true;
-        }
-
-        escalatedCount += 1;
-      } else {
-        console.warn("Task escalation workflow did not complete cleanly", workflowResult.failures);
-      }
-    }
-
-    return escalatedCount;
   }
 
   useEffect(() => {
@@ -501,17 +206,7 @@ export default function TasksPage() {
       return;
     }
 
-    const completedAt = new Date().toISOString();
-
-    const { data: updatedRows, error } = await supabase
-      .from("activity_log")
-      .update({
-        completed_at: completedAt,
-        notes: buildCompletedTaskNotes(task.notes, completionNote),
-      })
-      .eq("id", task.id)
-      .eq("agency_id", task.agency_id)
-      .select("id");
+    const { data: updatedRows, error } = await completeTask(task, completionNote);
 
     setCompletingTaskId(null);
 
@@ -546,44 +241,6 @@ export default function TasksPage() {
     setEditTaskAssignedTo("");
   }
 
-  async function markTaskAsEscalated(task: TaskRow, actorUserId: string) {
-    const event = createDomainEvent({
-      type: "task.escalated",
-      agencyId: task.agency_id,
-      entityType: "task",
-      entityId: task.id,
-      actorUserId,
-      metadata: {
-        original_task_id: task.id,
-        original_task_summary: task.summary,
-        original_entity_type: task.entity_type,
-        original_entity_id: task.entity_id,
-        assigned_to: editTaskAssignedTo,
-        due_at: editTaskDueDate
-          ? new Date(`${editTaskDueDate}T12:00:00`).toISOString()
-          : null,
-        created_at: task.created_at,
-        escalation_reason: "User confirmed manual escalation during task edit.",
-      },
-    });
-
-    const workflowResult = await dispatchDomainEvent(
-      {
-        supabase,
-        agencyId: task.agency_id,
-        actor: { userId: actorUserId },
-      },
-      event,
-    );
-
-    if (!workflowResult.ok) {
-      console.warn("Task escalation workflow did not complete cleanly", workflowResult.failures);
-      return null;
-    }
-
-    return workflowResult.workflowEventId;
-  }
-
   async function saveTaskEdit(task: TaskRow, flagAsEscalated: boolean) {
     const trimmedSummary = editTaskSummary.trim();
 
@@ -594,20 +251,12 @@ export default function TasksPage() {
 
     setSavingTaskEdit(true);
 
-    const nextDueAt = editTaskDueDate
-      ? new Date(`${editTaskDueDate}T12:00:00`).toISOString()
-      : null;
-
-    const shouldClearEscalation =
-      task.is_escalated && !shouldRemainEscalatedForDueDate(nextDueAt);
-
-    const metadata = shouldClearEscalation
-      ? mergeTaskMetadata(task.metadata, { manual_escalation_declined_for_due_at: null })
-      : flagAsEscalated
-        ? mergeTaskMetadata(task.metadata, { manual_escalation_declined_for_due_at: null })
-        : shouldPromptForManualEscalation(task, nextDueAt)
-          ? mergeTaskMetadata(task.metadata, { manual_escalation_declined_for_due_at: nextDueAt })
-          : task.metadata;
+    const nextDueAt = dueAtFromDateInput(editTaskDueDate);
+    const { metadata, shouldClearEscalation } = editTaskMetadata(
+      task,
+      nextDueAt,
+      flagAsEscalated,
+    );
 
     let escalationFields = {};
 
@@ -615,7 +264,7 @@ export default function TasksPage() {
       const {
         data: { user },
         error: userError,
-      } = await supabase.auth.getUser();
+      } = await getSignedInUser();
 
       if (userError || !user) {
         setSavingTaskEdit(false);
@@ -623,7 +272,12 @@ export default function TasksPage() {
         return;
       }
 
-      const workflowEventId = await markTaskAsEscalated(task, user.id);
+      const workflowEventId = await createManualTaskEscalation(
+        task,
+        user.id,
+        editTaskAssignedTo,
+        nextDueAt,
+      );
 
       if (!workflowEventId) {
         setSavingTaskEdit(false);
@@ -633,7 +287,7 @@ export default function TasksPage() {
 
       escalationFields = {
         escalated_at: new Date().toISOString(),
-        escalation_level: "overdue_7_days",
+        escalation_level: ESCALATION_LEVEL_OVERDUE_7_DAYS,
         escalation_workflow_event_id: workflowEventId,
       };
     }
@@ -654,12 +308,7 @@ export default function TasksPage() {
         : {}),
     };
 
-    const { data: updatedRows, error } = await supabase
-      .from("activity_log")
-      .update(updatePayload)
-      .eq("id", task.id)
-      .eq("agency_id", task.agency_id)
-      .select("id");
+    const { data: updatedRows, error } = await updateTask(task, updatePayload);
 
     setSavingTaskEdit(false);
 
@@ -686,9 +335,7 @@ export default function TasksPage() {
       return;
     }
 
-    const nextDueAt = editTaskDueDate
-      ? new Date(`${editTaskDueDate}T12:00:00`).toISOString()
-      : null;
+    const nextDueAt = dueAtFromDateInput(editTaskDueDate);
 
     if (shouldPromptForManualEscalation(task, nextDueAt)) {
       setManualEscalationTask(task);
@@ -704,12 +351,7 @@ export default function TasksPage() {
 
     setDeletingTaskId(task.id);
 
-    const { data: deletedRows, error } = await supabase
-      .from("activity_log")
-      .delete()
-      .eq("id", task.id)
-      .eq("agency_id", task.agency_id)
-      .select("id");
+    const { data: deletedRows, error } = await deleteTask(task);
 
     setDeletingTaskId(null);
 
@@ -741,6 +383,16 @@ export default function TasksPage() {
     : isAgencyOwnerFilter(ownerFilter)
       ? "All tasks"
       : possessiveName(selectedAgentName ?? "Agent");
+
+
+  const kpiFilterCards: Array<{ label: string; value: number; filter: TaskFilter }> = [
+    { label: "Open", value: taskStats.open, filter: "all" },
+    { label: "Overdue", value: taskStats.overdue, filter: "overdue" },
+    { label: "Escalated", value: taskStats.escalated, filter: "escalated" },
+    { label: "Due today", value: taskStats.dueToday, filter: "due_today" },
+    { label: "Due soon", value: taskStats.dueSoon, filter: "due_soon" },
+    { label: "No due date", value: taskStats.noDueDate, filter: "no_due" },
+  ];
 
   const ownerFilterItems = [
     {
@@ -836,42 +488,56 @@ export default function TasksPage() {
             marginBottom: "var(--space-4)",
           }}
         >
-          <StatTile label="Open" value={taskStats.open} />
-          <StatTile label="Overdue" value={taskStats.overdue} />
-          <StatTile label="Escalated" value={taskStats.escalated} />
-          <StatTile label="Due today" value={taskStats.dueToday} />
-          <StatTile label="Due soon" value={taskStats.dueSoon} />
-          <StatTile label="No due date" value={taskStats.noDueDate} />
+          {kpiFilterCards.map((card) => {
+            const isActive = filter === card.filter;
+
+            return (
+              <Button
+                key={card.filter}
+                type="button"
+                variant="secondary"
+                onClick={() => setFilter(card.filter)}
+                aria-pressed={isActive}
+                style={{
+                  display: "grid",
+                  justifyItems: "start",
+                  gap: "var(--space-2)",
+                  minHeight: 108,
+                  padding: "var(--space-4)",
+                  borderRadius: "var(--radius-lg)",
+                  borderColor: isActive ? "var(--accent)" : "var(--border)",
+                  background: isActive ? "var(--accentSoft)" : "var(--surfaceRaised)",
+                  color: "var(--text)",
+                  textAlign: "left",
+                }}
+              >
+                <span
+                  style={{
+                    color: "var(--mutedText)",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {card.label}
+                </span>
+                <span style={{ fontSize: 32, fontWeight: 800, lineHeight: 1 }}>{card.value}</span>
+              </Button>
+            );
+          })}
         </div>
 
         <div style={{ display: "grid", gap: "var(--space-3)" }}>
-          <div style={{ display: "grid", gap: "var(--space-3)", width: "100%" }}>
-            <div style={{ width: "100%", minWidth: 0 }}>
-              <SegmentedControl
-                ariaLabel="Task filter"
-                value={filter}
-                onChange={setFilter}
-                options={[
-                  { label: "All open", value: "all" },
-                  { label: "Escalated", value: "escalated" },
-                  { label: "Overdue", value: "overdue" },
-                  { label: "Due today", value: "due_today" },
-                  { label: "Due soon", value: "due_soon" },
-                  { label: "No due date", value: "no_due" },
-                ]}
-              />
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
-              <ActionMenu
-                label="Agent filter"
-                open={openTaskMenuId === "tasks-filter"}
-                onOpenChange={(open) => setOpenTaskMenuId(open ? "tasks-filter" : null)}
-                items={ownerFilterItems}
-                menuAlign="right"
-                menuPosition="fixedRight"
-              />
-            </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
+            <ActionMenu
+              label="Agent filter"
+              open={openTaskMenuId === "tasks-filter"}
+              onOpenChange={(open) => setOpenTaskMenuId(open ? "tasks-filter" : null)}
+              items={ownerFilterItems}
+              menuAlign="right"
+              menuPosition="fixedRight"
+            />
           </div>
 
           <Input

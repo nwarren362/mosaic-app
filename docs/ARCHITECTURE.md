@@ -86,3 +86,14 @@ Later (production hardening):
 - Prefer server routes (Next.js route handlers) for sensitive actions like creating invites.
 - Keep DB functions for state transitions (accept invite) because they are easy to secure and audit.
 
+# Note for reference architecture
+## The ** tasks page ** should be considered a reference example of code architecture.
+We refactored the page to reduce technical debt. Specifically, we extracted various components:
+- taskFilters.ts
+- taskQueries.ts
+- taskTypes.ts
+- taskWorkflow.ts
+The result, a less complex page which should be easier to maintain.
+From a UI perspective, note that we removed filter lozenges.
+Filters can now be applied by clicking the KPI panels.
+This page has effectively become a template for simplifying future complex pages such as: Artists, Venues, Gigs. 

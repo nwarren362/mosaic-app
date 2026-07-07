@@ -50,6 +50,7 @@ This is a hobby project. Keep momentum: do 1–2 cleanup tasks per milestone.
 * overdue / due-date task indicators
 * deep-link navigation to activity sections
 * reusable task/action menu pattern foundations
+* overdue task escalation
 
 ### UX / operational improvements
 * reusable contacts section
@@ -101,7 +102,7 @@ This is a hobby project. Keep momentum: do 1–2 cleanup tasks per milestone.
 
     Priority order
     If I were ordering these by implementation priority, I’d now rank them:
-    1.	overdue task escalation workflow
+    1. [x] overdue task escalation workflow
     2.	automated reminders
     3.	workflow duration metrics
     4.	agent performance metrics
