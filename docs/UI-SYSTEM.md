@@ -230,7 +230,7 @@ Rules:
 When editing UI:
 - Follow this system
 - Prefer consistency over speed
-- Return full files (not partial edits)
+- Edit files directly in the repository and review the resulting diff.
 
 ---
 

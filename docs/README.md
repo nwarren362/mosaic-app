@@ -13,6 +13,13 @@ They intentionally focus on **decisions, constraints, and mental models**, not j
 
 ## Documents
 
+### [`AGENTS.md`](../AGENTS.md)
+Concise contributor guidance at the repository root: task scope, repository edits, preservation of local changes, checks, acceptance, commits, push authorisation and worktree use.
+
+Read this before starting development. Keep practical procedures in the runbook.
+
+---
+
 ### `ARCHITECTURE.md`
 High-level system design:
 - tenancy model
@@ -39,12 +46,14 @@ Read this when changing schema or debugging permissions.
 
 ### `RUNBOOK.md`
 Practical, operational notes:
+- development procedure, proportionate automated checks and browser acceptance
+- change review, commits, push authorisation and worktree use
 - how to run the app locally
 - how deployment works
 - environment variables
 - common errors and fixes
 
-Read this when “something isn’t working”.
+Read this when doing development or when “something isn’t working”.
 
 ---
 
