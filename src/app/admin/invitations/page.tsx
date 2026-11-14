@@ -28,6 +28,10 @@ function randomToken(): string {
     .join("");
 }
 
+function invitationExpiry() {
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+}
+
 export default function InvitationsPage() {
   const router = useRouter();
 
@@ -46,57 +50,59 @@ export default function InvitationsPage() {
   }, [memberships, agencyId]);
 
   async function load() {
-    setMessage(null);
+    return supabase.auth.getSession().then(async ({ data: sessionData }) => {
+      setMessage(null);
+      const user = sessionData.session?.user;
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+      const { data: ms, error: mErr } = await supabase
+        .from("agency_memberships")
+        .select("agency_id, role, agencies:agencies(id, name)");
 
-    const { data: ms, error: mErr } = await supabase
-      .from("agency_memberships")
-      .select("agency_id, role, agencies:agencies(id, name)");
+      if (mErr) {
+        setMessage(mErr.message);
+        return;
+      }
 
-    if (mErr) {
-      setMessage(mErr.message);
-      return;
-    }
+      const typed = (ms ?? []) as unknown as Membership[];
+      // Deduplicate memberships (safety belt)
+      const unique = new Map<string, Membership>();
+      for (const m of typed) {
+        const key = `${m.agency_id}`;
+        // Keep admin if duplicates exist
+        const existing = unique.get(key);
+        if (!existing) unique.set(key, m);
+        else if (existing.role !== "admin" && m.role === "admin") unique.set(key, m);
+      }
 
-    const typed = (ms ?? []) as unknown as Membership[];
-    // Deduplicate memberships (safety belt)
-    const unique = new Map<string, Membership>();
-    for (const m of typed) {
-      const key = `${m.agency_id}`;
-      // Keep admin if duplicates exist
-      const existing = unique.get(key);
-      if (!existing) unique.set(key, m);
-      else if (existing.role !== "admin" && m.role === "admin") unique.set(key, m);
-    }
+  setMemberships(Array.from(unique.values()));
 
-setMemberships(Array.from(unique.values()));
-
-    const firstAgencyId = typed[0]?.agency_id ?? "";
-    setAgencyId((prev) => prev || firstAgencyId);
+      const firstAgencyId = typed[0]?.agency_id ?? "";
+      setAgencyId((prev) => prev || firstAgencyId);
+    });
   }
 
   async function loadInvites(forAgencyId: string) {
-    setInvites([]);
     if (!forAgencyId) return;
 
-    const { data, error } = await supabase
+    return supabase
       .from("agency_invitations")
       .select("id, email, role, expires_at, accepted_at, created_at")
       .eq("agency_id", forAgencyId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .then(async ({ data, error }) => {
 
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
+        if (error) {
+          setInvites([]);
+          setMessage(error.message);
+          return;
+        }
 
-    setInvites((data ?? []) as InvitationRow[]);
+        setInvites((data ?? []) as InvitationRow[]);
+      });
   }
 
   async function deleteInvite(inviteId: string) {
@@ -147,7 +153,7 @@ setMemberships(Array.from(unique.values()));
       });
       if (hashErr) throw new Error(hashErr.message);
 
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const expiresAt = invitationExpiry();
 
       const { error: insErr } = await supabase.from("agency_invitations").insert({
         agency_id: agencyId,
@@ -163,8 +169,8 @@ setMemberships(Array.from(unique.values()));
       setAcceptLink(link);
       setMessage(`New invite link generated for ${invite.email}.`);
       await loadInvites(agencyId);
-    } catch (e: any) {
-      setMessage(e?.message ?? "Failed to regenerate invite.");
+    } catch (e: unknown) {
+      setMessage(e instanceof Error ? e.message : "Failed to regenerate invite.");
     }
   }
 
@@ -196,7 +202,7 @@ setMemberships(Array.from(unique.values()));
       });
       if (hashErr) throw new Error(hashErr.message);
 
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const expiresAt = invitationExpiry();
 
       const { error: insErr } = await supabase.from("agency_invitations").insert({
         agency_id: agencyId,
@@ -213,8 +219,8 @@ setMemberships(Array.from(unique.values()));
       setMessage(`Invite created for ${email} (${role}) in ${selectedAgencyName}.`);
       setEmail("");
       await loadInvites(agencyId);
-    } catch (err: any) {
-      setMessage(err?.message ?? "Failed to create invite.");
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : "Failed to create invite.");
     } finally {
       setLoading(false);
     }
@@ -227,7 +233,6 @@ setMemberships(Array.from(unique.values()));
 
   useEffect(() => {
     if (agencyId) loadInvites(agencyId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agencyId]);
 
   return (

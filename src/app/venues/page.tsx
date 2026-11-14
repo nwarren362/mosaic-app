@@ -61,16 +61,6 @@ export default function VenuesPage() {
   const [selectedRegionTagId, setSelectedRegionTagId] = useState("");
 
   useEffect(() => {
-    loadVenueFilterTags();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    loadVenues();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regionTags, attributeTags]);
-
-  useEffect(() => {
     if (showAddForm) {
       setTimeout(() => {
         nameInputRef.current?.focus();
@@ -81,83 +71,96 @@ export default function VenuesPage() {
     const agencyId = getActiveAgencyId();
     if (!agencyId) return;
 
-    const { data, error } = await supabase
+    return supabase
       .from("agency_tags")
       .select("id, name, type")
       .eq("agency_id", agencyId)
       .eq("active", true)
       .order("type", { ascending: true })
       .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
+      .order("name", { ascending: true })
+      .then(async ({ data, error }) => {
 
-    if (!error && data) {
-      const tags = data as AgencyTag[];
-      setRegionTags(tags.filter((tag) => tag.type === "region"));
-      setAttributeTags(tags.filter((tag) => tag.type !== "region"));
-    }
+        if (!error && data) {
+          const tags = data as AgencyTag[];
+          setRegionTags(tags.filter((tag) => tag.type === "region"));
+          setAttributeTags(tags.filter((tag) => tag.type !== "region"));
+        }
+      });
   }
 
   async function loadVenues() {
     const agencyId = getActiveAgencyId();
     if (!agencyId) return;
 
-    const { data, error } = await supabase
+    return supabase
       .from("venues")
       .select("id, name, city, country, display_address, status")
       .eq("agency_id", agencyId)
-      .order("name");
+      .order("name")
+      .then(async ({ data, error }) => {
 
-    if (error || !data) {
-      setVenues([]);
-      return;
-    }
+        if (error || !data) {
+          setVenues([]);
+          return;
+        }
 
-    const venueRows = data as Omit<Venue, "region_tag_ids" | "attribute_tag_ids">[];
+        const venueRows = data as Omit<Venue, "region_tag_ids" | "attribute_tag_ids">[];
 
-    const { data: venueTagData, error: venueTagError } = await supabase
-      .from("venue_tags")
-      .select("venue_id, tag_id")
-      .eq("agency_id", agencyId);
+        const { data: venueTagData, error: venueTagError } = await supabase
+          .from("venue_tags")
+          .select("venue_id, tag_id")
+          .eq("agency_id", agencyId);
 
-    if (venueTagError || !venueTagData) {
-      setVenues(
-        venueRows.map((venue) => ({
-          ...venue,
-          region_tag_ids: [],
-          attribute_tag_ids: [],
-        }))
-      );
-      return;
-    }
+        if (venueTagError || !venueTagData) {
+          setVenues(
+            venueRows.map((venue) => ({
+              ...venue,
+              region_tag_ids: [],
+              attribute_tag_ids: [],
+            }))
+          );
+          return;
+        }
 
-    const venueTagRows = venueTagData as VenueTagRow[];
-    const regionTagIdSet = new Set(regionTags.map((tag) => tag.id));
-    const attributeTagIdSet = new Set(attributeTags.map((tag) => tag.id));
+        const venueTagRows = venueTagData as VenueTagRow[];
+        const regionTagIdSet = new Set(regionTags.map((tag) => tag.id));
+        const attributeTagIdSet = new Set(attributeTags.map((tag) => tag.id));
 
-    const tagsByVenue = venueTagRows.reduce<
-      Record<string, { region: string[]; attributes: string[] }>
-    >((acc, row) => {
-      if (!acc[row.venue_id]) acc[row.venue_id] = { region: [], attributes: [] };
+        const tagsByVenue = venueTagRows.reduce<
+          Record<string, { region: string[]; attributes: string[] }>
+        >((acc, row) => {
+          if (!acc[row.venue_id]) acc[row.venue_id] = { region: [], attributes: [] };
 
-      if (regionTagIdSet.has(row.tag_id)) {
-        acc[row.venue_id].region.push(row.tag_id);
-      }
+          if (regionTagIdSet.has(row.tag_id)) {
+            acc[row.venue_id].region.push(row.tag_id);
+          }
 
-      if (attributeTagIdSet.has(row.tag_id)) {
-        acc[row.venue_id].attributes.push(row.tag_id);
-      }
+          if (attributeTagIdSet.has(row.tag_id)) {
+            acc[row.venue_id].attributes.push(row.tag_id);
+          }
 
-      return acc;
-    }, {});
+          return acc;
+        }, {});
 
-    setVenues(
-      venueRows.map((venue) => ({
-        ...venue,
-        region_tag_ids: tagsByVenue[venue.id]?.region ?? [],
-        attribute_tag_ids: tagsByVenue[venue.id]?.attributes ?? [],
-      }))
-    );
+        setVenues(
+          venueRows.map((venue) => ({
+            ...venue,
+            region_tag_ids: tagsByVenue[venue.id]?.region ?? [],
+            attribute_tag_ids: tagsByVenue[venue.id]?.attributes ?? [],
+          }))
+        );
+      });
   }
+
+  useEffect(() => {
+    loadVenueFilterTags();
+  }, []);
+
+  useEffect(() => {
+    loadVenues();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regionTags, attributeTags]);
 
   const filteredVenues = useMemo(() => {
     const q = search.trim().toLowerCase();

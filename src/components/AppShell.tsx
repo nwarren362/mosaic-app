@@ -17,7 +17,7 @@ import {
 type NavItem = {
   href: string;
   label: string;
-  Icon: any;
+  Icon: import("lucide-react").LucideIcon;
 };
 
 function NavLink({ href, label, Icon, collapsed }: NavItem & { collapsed: boolean }) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Page, Card, Button, Input } from "@/components/ui";
+import { Button, Input } from "@/components/ui";
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";

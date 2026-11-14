@@ -88,12 +88,15 @@ export default function BrandingPage() {
     load();
   }, [router]);
 
-  useEffect(() => {
-    if (!currentAgency) return;
-    setPreset((currentAgency.theme_preset as ThemePreset) || "obsidian");
-    setLogoUrl(currentAgency.logo_url ?? "");
-    setSelectedFile(null);
-  }, [currentAgency]);
+  const [draftAgency, setDraftAgency] = useState<AgencyRow | undefined>();
+  if (currentAgency !== draftAgency) {
+    setDraftAgency(currentAgency);
+    if (currentAgency) {
+      setPreset((currentAgency.theme_preset as ThemePreset) || "obsidian");
+      setLogoUrl(currentAgency.logo_url ?? "");
+      setSelectedFile(null);
+    }
+  }
 
   async function refreshAgencyList() {
     const { data } = await supabase
@@ -172,8 +175,8 @@ export default function BrandingPage() {
       setMessage("Logo uploaded and saved. Refresh /me to see it.");
       setActiveAgencyId(agencyId);
       await refreshAgencyList();
-    } catch (e: any) {
-      setMessage(e?.message ?? "Failed to upload logo.");
+    } catch (e: unknown) {
+      setMessage(e instanceof Error ? e.message : "Failed to upload logo.");
     } finally {
       setBusy(false);
     }

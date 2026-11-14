@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCircle2, Mail, Menu, Phone, Plus, Star, Trash2, UserRound, Zap } from "lucide-react";
+import { CheckCircle2, Menu, Plus, Star, UserRound, Zap } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import {
   SectionCard,
@@ -744,7 +744,6 @@ export default function ArtistMembersSection({
             })}
           </div>
         )}
-
 
         {showAddForm ? (
           <div

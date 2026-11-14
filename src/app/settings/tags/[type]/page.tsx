@@ -72,63 +72,63 @@ export default function TagEntityDetailPage() {
   }, [statusFilter, tags]);
 
   async function load() {
-    setLoading(true);
-    setMessage(null);
+    return supabase.auth.getSession().then(async ({ data: sessionData }) => {
+      setMessage(null);
+      setLoading(true);
+      const user = sessionData.session?.user;
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+      const activeAgencyId = getActiveAgencyId();
 
-    const activeAgencyId = getActiveAgencyId();
+      if (!activeAgencyId) {
+        setLoading(false);
+        setMessage("No active agency selected. Go to /me and choose an agency.");
+        return;
+      }
 
-    if (!activeAgencyId) {
+      setAgencyId(activeAgencyId);
+
+      const { data: entityData, error: entityError } = await supabase
+        .from("agency_tag_types")
+        .select("id, agency_id, type, label, description, sort_order, active, created_at")
+        .eq("agency_id", activeAgencyId)
+        .eq("type", type)
+        .single();
+
+      if (entityError) {
+        setMessage(entityError.message);
+        setEntity(null);
+        setLoading(false);
+        return;
+      }
+
+      const loadedEntity = entityData as AgencyTagType;
+      setEntity(loadedEntity);
+      setLabel(loadedEntity.label);
+      setDescription(loadedEntity.description ?? "");
+      setEntityActive(loadedEntity.active ?? true);
+
+      const { data: tagData, error: tagError } = await supabase
+        .from("agency_tags")
+        .select("id, agency_id, name, type, sort_order, active, created_at")
+        .eq("agency_id", activeAgencyId)
+        .eq("type", type)
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true });
+
+      if (tagError) {
+        setMessage(tagError.message);
+        setTags([]);
+      } else {
+        setTags((tagData ?? []) as AgencyTag[]);
+      }
+
       setLoading(false);
-      setMessage("No active agency selected. Go to /me and choose an agency.");
-      return;
-    }
-
-    setAgencyId(activeAgencyId);
-
-    const { data: entityData, error: entityError } = await supabase
-      .from("agency_tag_types")
-      .select("id, agency_id, type, label, description, sort_order, active, created_at")
-      .eq("agency_id", activeAgencyId)
-      .eq("type", type)
-      .single();
-
-    if (entityError) {
-      setMessage(entityError.message);
-      setEntity(null);
-      setLoading(false);
-      return;
-    }
-
-    const loadedEntity = entityData as AgencyTagType;
-    setEntity(loadedEntity);
-    setLabel(loadedEntity.label);
-    setDescription(loadedEntity.description ?? "");
-    setEntityActive(loadedEntity.active ?? true);
-
-    const { data: tagData, error: tagError } = await supabase
-      .from("agency_tags")
-      .select("id, agency_id, name, type, sort_order, active, created_at")
-      .eq("agency_id", activeAgencyId)
-      .eq("type", type)
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
-
-    if (tagError) {
-      setMessage(tagError.message);
-      setTags([]);
-    } else {
-      setTags((tagData ?? []) as AgencyTag[]);
-    }
-
-    setLoading(false);
+    });
   }
 
   async function save() {
@@ -305,7 +305,6 @@ export default function TagEntityDetailPage() {
         <div>
         <h1 style={{ margin: 0 }}>{entity?.label ?? "Tag entity"}</h1>
         </div>
-            
 
         <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
           <Button variant="secondary" type="button" onClick={navigateBack}>
@@ -498,10 +497,12 @@ function TagRow({
   const [draftName, setDraftName] = useState(tag.name);
   const [draftActive, setDraftActive] = useState(active);
 
-  useEffect(() => {
+  const [source, setSource] = useState({ name: tag.name, active });
+  if (source.name !== tag.name || source.active !== active) {
+    setSource({ name: tag.name, active });
     setDraftName(tag.name);
     setDraftActive(active);
-  }, [tag.name, active]);
+  }
 
   const nameDirty = draftName.trim() !== tag.name;
   const activeDirty = draftActive !== active;

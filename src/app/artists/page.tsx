@@ -102,88 +102,88 @@ export default function ArtistsPage() {
   }, [artists, searchText, statusFilter, selectedRegionTagIds, maxBandSizeFilter]);
 
   async function load() {
-    setMessage(null);
-    setLoading(true);
+    return supabase.auth.getSession().then(async ({ data: sessionData }) => {
+      setMessage(null);
+      setLoading(true);
+      const user = sessionData.session?.user;
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+      const active = getActiveAgencyId();
 
-    const active = getActiveAgencyId();
+      if (!active) {
+        setLoading(false);
+        setMessage("No active agency selected. Go to /me and choose an agency.");
+        return;
+      }
 
-    if (!active) {
+      setAgencyId(active);
+
+      const { data, error } = await supabase
+        .from("artists")
+        .select("id, agency_id, name, genre, home_city, n_piece, notes, status, image_url, banner_position_x, banner_position_y, banner_zoom, created_at")
+        .eq("agency_id", active)
+        .order("name", { ascending: true });
+
+      if (error) {
+        setMessage(error.message);
+        setArtists([]);
+        setLoading(false);
+        return;
+      }
+
+      const artistRows = (data ?? []) as Omit<Artist, "region_tag_ids">[];
+
+      const { data: tagData, error: tagError } = await supabase
+        .from("agency_tags")
+        .select("id, name, type, sort_order")
+        .eq("agency_id", active)
+        .eq("type", "region")
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true });
+
+      if (tagError) {
+        setMessage(tagError.message);
+        setRegionTags([]);
+      } else {
+        setRegionTags((tagData ?? []) as AgencyTag[]);
+      }
+
+      const { data: artistTagData, error: artistTagError } = await supabase
+        .from("artist_tags")
+        .select("artist_id, tag_id")
+        .eq("agency_id", active);
+
+      if (artistTagError) {
+        setMessage(artistTagError.message);
+        setArtists(artistRows.map((artist) => ({ ...artist, region_tag_ids: [] })) as Artist[]);
+        setLoading(false);
+        return;
+      }
+
+      const artistTagRows = (artistTagData ?? []) as ArtistTagRow[];
+      const regionTagIdSet = new Set(((tagData ?? []) as AgencyTag[]).map((tag) => tag.id));
+
+      const regionTagsByArtist = artistTagRows.reduce<Record<string, string[]>>((acc, row) => {
+        if (!regionTagIdSet.has(row.tag_id)) return acc;
+
+        if (!acc[row.artist_id]) acc[row.artist_id] = [];
+        acc[row.artist_id].push(row.tag_id);
+        return acc;
+      }, {});
+
+      setArtists(
+        artistRows.map((artist) => ({
+          ...artist,
+          region_tag_ids: regionTagsByArtist[artist.id] ?? [],
+        })) as Artist[]
+      );
+
       setLoading(false);
-      setMessage("No active agency selected. Go to /me and choose an agency.");
-      return;
-    }
-
-    setAgencyId(active);
-
-    const { data, error } = await supabase
-      .from("artists")
-      .select("id, agency_id, name, genre, home_city, n_piece, notes, status, image_url, banner_position_x, banner_position_y, banner_zoom, created_at")
-      .eq("agency_id", active)
-      .order("name", { ascending: true });
-
-    if (error) {
-      setMessage(error.message);
-      setArtists([]);
-      setLoading(false);
-      return;
-    }
-
-    const artistRows = (data ?? []) as Omit<Artist, "region_tag_ids">[];
-
-    const { data: tagData, error: tagError } = await supabase
-      .from("agency_tags")
-      .select("id, name, type, sort_order")
-      .eq("agency_id", active)
-      .eq("type", "region")
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
-
-    if (tagError) {
-      setMessage(tagError.message);
-      setRegionTags([]);
-    } else {
-      setRegionTags((tagData ?? []) as AgencyTag[]);
-    }
-
-    const { data: artistTagData, error: artistTagError } = await supabase
-      .from("artist_tags")
-      .select("artist_id, tag_id")
-      .eq("agency_id", active);
-
-    if (artistTagError) {
-      setMessage(artistTagError.message);
-      setArtists(artistRows.map((artist) => ({ ...artist, region_tag_ids: [] })) as Artist[]);
-      setLoading(false);
-      return;
-    }
-
-    const artistTagRows = (artistTagData ?? []) as ArtistTagRow[];
-    const regionTagIdSet = new Set(((tagData ?? []) as AgencyTag[]).map((tag) => tag.id));
-
-    const regionTagsByArtist = artistTagRows.reduce<Record<string, string[]>>((acc, row) => {
-      if (!regionTagIdSet.has(row.tag_id)) return acc;
-
-      if (!acc[row.artist_id]) acc[row.artist_id] = [];
-      acc[row.artist_id].push(row.tag_id);
-      return acc;
-    }, {});
-
-    setArtists(
-      artistRows.map((artist) => ({
-        ...artist,
-        region_tag_ids: regionTagsByArtist[artist.id] ?? [],
-      })) as Artist[]
-    );
-
-    setLoading(false);
+    });
   }
 
   function resetForm() {

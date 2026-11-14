@@ -52,8 +52,9 @@ function AcceptInviteInner() {
 
       // If RPC returns membership, use it to set active agency
       // Some supabase typings return object or array depending on RPC definition; handle both safely.
-      const row: any = Array.isArray(data) ? data[0] : data;
-      const agencyId = row?.agency_id;
+      const row: unknown = Array.isArray(data) ? data[0] : data;
+      const agencyId = row && typeof row === "object" && "agency_id" in row
+        && typeof row.agency_id === "string" ? row.agency_id : null;
 
       if (agencyId) {
         setActiveAgencyId(agencyId);
@@ -66,7 +67,6 @@ function AcceptInviteInner() {
     }
 
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, searchParams]);
 
   return (

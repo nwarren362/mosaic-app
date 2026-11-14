@@ -119,13 +119,12 @@ export default function ArtistDetailPage() {
   const [imageUrl, setImageUrl] = useState("");
   const [status, setStatus] = useState<"active" | "inactive">("active");
   const [notes, setNotes] = useState("");
-  const [bannerUploading, setBannerUploading] = useState(false);
+  const [, setBannerUploading] = useState(false);
   const [bannerPreviewUrl, setBannerPreviewUrl] = useState<string | null>(null);
   const [bannerPositionX, setBannerPositionX] = useState(50);
   const [bannerPositionY, setBannerPositionY] = useState(50);
   const [bannerZoom, setBannerZoom] = useState(100);
   const [showBannerReposition, setShowBannerReposition] = useState(false);
-  const [savingBannerPosition, setSavingBannerPosition] = useState(false);
   const bannerInputRef = useRef<HTMLInputElement | null>(null);
   const [showBannerMenu, setShowBannerMenu] = useState(false);
   const [showArtistMenu, setShowArtistMenu] = useState(false);
@@ -159,148 +158,148 @@ export default function ArtistDetailPage() {
   }, [activeGigTab, upcomingGigs, pastGigs]);
 
   async function load() {
-    setMessage(null);
-    setLoading(true);
+    return supabase.auth.getSession().then(async ({ data: sessionData }) => {
+      setMessage(null);
+      setLoading(true);
+      const user = sessionData.session?.user;
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+      const active = getActiveAgencyId();
+      if (!active) {
+        setLoading(false);
+        setMessage("No active agency selected. Go to /me and choose an agency.");
+        return;
+      }
 
-    const active = getActiveAgencyId();
-    if (!active) {
+      setAgencyId(active);
+
+      const { data, error } = await supabase
+        .from("artists")
+        .select(
+          "id, agency_id, name, genre, home_city, home_country, n_piece, notes, image_url, banner_position_x, banner_position_y, banner_zoom, status, created_at, updated_at"
+        )
+        .eq("id", id)
+        .eq("agency_id", active)
+        .single();
+
+      if (error) {
+        setMessage(error.message);
+        setArtist(null);
+        setLoading(false);
+        return;
+      }
+
+      const a = data as Artist;
+      setArtist(a);
+
+      setName(a.name);
+      setGenre(a.genre ?? "");
+      setHomeCity(a.home_city ?? "");
+      setHomeCountry(a.home_country ?? "");
+      setNPiece(a.n_piece == null ? "" : String(a.n_piece));
+      setImageUrl(a.image_url ?? "");
+      setBannerPreviewUrl(null);
+      setBannerPositionX(a.banner_position_x ?? 50);
+      setBannerPositionY(a.banner_position_y ?? 50);
+      setBannerZoom(a.banner_zoom ?? 100);
+      setShowBannerReposition(false);
+      setStatus((a.status ?? "active") as "active" | "inactive");
+      setNotes(a.notes ?? "");
+
+      const nowIso = new Date().toISOString();
+
+      const { data: upData, error: upErr } = await supabase
+        .from("gigs")
+        .select("id,title,venue_id,venue,city,starts_at,status,fee_cents")
+        .eq("agency_id", active)
+        .eq("artist_id", id)
+        .gte("starts_at", nowIso)
+        .order("starts_at", { ascending: true })
+        .limit(5);
+
+      if (upErr) {
+        setMessage(upErr.message);
+      } else {
+        setUpcomingGigs((upData ?? []) as Gig[]);
+      }
+
+      const { data: pastData, error: pastErr } = await supabase
+        .from("gigs")
+        .select("id,title,venue_id,venue,city,starts_at,status,fee_cents")
+        .eq("agency_id", active)
+        .eq("artist_id", id)
+        .lt("starts_at", nowIso)
+        .order("starts_at", { ascending: false })
+        .limit(5);
+
+      if (pastErr) {
+        setMessage(pastErr.message);
+      } else {
+        setPastGigs((pastData ?? []) as Gig[]);
+      }
+
+      const { data: venueData, error: venueErr } = await supabase
+        .from("venues")
+        .select("id,name,city")
+        .eq("agency_id", active)
+        .order("name", { ascending: true });
+
+      if (venueErr) {
+        setMessage(venueErr.message);
+      } else {
+        setVenues((venueData ?? []) as VenueOption[]);
+      }
+
+      const { data: memberData, error: memberErr } = await supabase
+        .from("artist_members")
+        .select(
+          "id, agency_id, artist_id, profile_id, name, role, email, phone, notes, is_primary, receives_gig_notifications, is_default_approver, approval_notes, portal_enabled, portal_invited_at, portal_last_seen_at, created_at, updated_at, created_by, updated_by"
+        )
+        .eq("agency_id", active)
+        .eq("artist_id", id)
+        .order("is_primary", { ascending: false })
+        .order("is_default_approver", { ascending: false })
+        .order("name", { ascending: true });
+
+      if (memberErr) {
+        setMessage(memberErr.message);
+      } else {
+        setArtistMembers((memberData ?? []) as ArtistMember[]);
+      }
+
+      const { data: tagData, error: tagErr } = await supabase
+        .from("agency_tags")
+        .select("id, name, type, sort_order")
+        .eq("agency_id", active)
+        .eq("type", "region")
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true });
+
+      if (tagErr) {
+        setMessage(tagErr.message);
+      } else {
+        setRegionTags((tagData ?? []) as AgencyTag[]);
+      }
+
+      const { data: selectedTagData, error: selectedTagErr } = await supabase
+        .from("artist_tags")
+        .select("tag_id")
+        .eq("agency_id", active)
+        .eq("artist_id", id);
+
+      if (selectedTagErr) {
+        setMessage(selectedTagErr.message);
+      } else {
+        setSelectedRegionTagIds(
+          ((selectedTagData ?? []) as ArtistTagRow[]).map((row) => row.tag_id)
+        );
+      }
+
       setLoading(false);
-      setMessage("No active agency selected. Go to /me and choose an agency.");
-      return;
-    }
-
-    setAgencyId(active);
-
-    const { data, error } = await supabase
-      .from("artists")
-      .select(
-        "id, agency_id, name, genre, home_city, home_country, n_piece, notes, image_url, banner_position_x, banner_position_y, banner_zoom, status, created_at, updated_at"
-      )
-      .eq("id", id)
-      .eq("agency_id", active)
-      .single();
-
-    if (error) {
-      setMessage(error.message);
-      setArtist(null);
-      setLoading(false);
-      return;
-    }
-
-    const a = data as Artist;
-    setArtist(a);
-
-    setName(a.name);
-    setGenre(a.genre ?? "");
-    setHomeCity(a.home_city ?? "");
-    setHomeCountry(a.home_country ?? "");
-    setNPiece(a.n_piece == null ? "" : String(a.n_piece));
-    setImageUrl(a.image_url ?? "");
-    setBannerPreviewUrl(null);
-    setBannerPositionX(a.banner_position_x ?? 50);
-    setBannerPositionY(a.banner_position_y ?? 50);
-    setBannerZoom(a.banner_zoom ?? 100);
-    setShowBannerReposition(false);
-    setStatus((a.status ?? "active") as "active" | "inactive");
-    setNotes(a.notes ?? "");
-
-    const nowIso = new Date().toISOString();
-
-    const { data: upData, error: upErr } = await supabase
-      .from("gigs")
-      .select("id,title,venue_id,venue,city,starts_at,status,fee_cents")
-      .eq("agency_id", active)
-      .eq("artist_id", id)
-      .gte("starts_at", nowIso)
-      .order("starts_at", { ascending: true })
-      .limit(5);
-
-    if (upErr) {
-      setMessage(upErr.message);
-    } else {
-      setUpcomingGigs((upData ?? []) as Gig[]);
-    }
-
-    const { data: pastData, error: pastErr } = await supabase
-      .from("gigs")
-      .select("id,title,venue_id,venue,city,starts_at,status,fee_cents")
-      .eq("agency_id", active)
-      .eq("artist_id", id)
-      .lt("starts_at", nowIso)
-      .order("starts_at", { ascending: false })
-      .limit(5);
-
-    if (pastErr) {
-      setMessage(pastErr.message);
-    } else {
-      setPastGigs((pastData ?? []) as Gig[]);
-    }
-
-    const { data: venueData, error: venueErr } = await supabase
-      .from("venues")
-      .select("id,name,city")
-      .eq("agency_id", active)
-      .order("name", { ascending: true });
-
-    if (venueErr) {
-      setMessage(venueErr.message);
-    } else {
-      setVenues((venueData ?? []) as VenueOption[]);
-    }
-
-    const { data: memberData, error: memberErr } = await supabase
-      .from("artist_members")
-      .select(
-        "id, agency_id, artist_id, profile_id, name, role, email, phone, notes, is_primary, receives_gig_notifications, is_default_approver, approval_notes, portal_enabled, portal_invited_at, portal_last_seen_at, created_at, updated_at, created_by, updated_by"
-      )
-      .eq("agency_id", active)
-      .eq("artist_id", id)
-      .order("is_primary", { ascending: false })
-      .order("is_default_approver", { ascending: false })
-      .order("name", { ascending: true });
-
-    if (memberErr) {
-      setMessage(memberErr.message);
-    } else {
-      setArtistMembers((memberData ?? []) as ArtistMember[]);
-    }
-
-    const { data: tagData, error: tagErr } = await supabase
-      .from("agency_tags")
-      .select("id, name, type, sort_order")
-      .eq("agency_id", active)
-      .eq("type", "region")
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
-
-    if (tagErr) {
-      setMessage(tagErr.message);
-    } else {
-      setRegionTags((tagData ?? []) as AgencyTag[]);
-    }
-
-    const { data: selectedTagData, error: selectedTagErr } = await supabase
-      .from("artist_tags")
-      .select("tag_id")
-      .eq("agency_id", active)
-      .eq("artist_id", id);
-
-    if (selectedTagErr) {
-      setMessage(selectedTagErr.message);
-    } else {
-      setSelectedRegionTagIds(
-        ((selectedTagData ?? []) as ArtistTagRow[]).map((row) => row.tag_id)
-      );
-    }
-
-    setLoading(false);
+    });
   }
 
   async function reloadArtistMembers() {
@@ -367,7 +366,6 @@ export default function ArtistDetailPage() {
 
     setSelectedRegionTagIds((current) => [...current, tagId]);
   }
-
 
   async function logArtistActivity({
     summary,
@@ -637,40 +635,6 @@ export default function ArtistDetailPage() {
     setMessage("Banner image updated.");
     e.target.value = "";
   }
-
-  async function saveBannerPosition() {
-    if (!artist) return;
-
-    setMessage(null);
-    setSavingBannerPosition(true);
-
-    const { error } = await supabase
-      .from("artists")
-      .update({
-        banner_position_x: bannerPositionX,
-        banner_position_y: bannerPositionY,
-        banner_zoom: bannerZoom,
-      })
-      .eq("id", artist.id)
-      .eq("agency_id", agencyId);
-
-    setSavingBannerPosition(false);
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setArtist({
-      ...artist,
-      banner_position_x: bannerPositionX,
-      banner_position_y: bannerPositionY,
-      banner_zoom: bannerZoom,
-    });
-    setShowBannerReposition(false);
-    setMessage("Banner position saved.");
-  }
-
 
   function toDatetimeLocalValue(iso: string) {
     const d = new Date(iso);
@@ -1483,7 +1447,6 @@ export default function ArtistDetailPage() {
                       setBannerZoom(artist?.banner_zoom ?? 100);
                       setShowBannerReposition(false);
                     }}
-                    disabled={savingBannerPosition}
                   >
                     Cancel
                   </Button>
@@ -1659,7 +1622,7 @@ export default function ArtistDetailPage() {
                         <Field label="Status">
                           <Select
                             value={gigStatus}
-                            onChange={(e) => setGigStatus(e.target.value as any)}
+                            onChange={(e) => setGigStatus(e.target.value as "confirmed" | "pending" | "cancelled")}
                           >
                             <option value="confirmed">confirmed</option>
                             <option value="pending">pending</option>
@@ -1703,7 +1666,6 @@ export default function ArtistDetailPage() {
                     </div>
                   </div>
                 )}
-
 
                 <div
                   style={{
@@ -1835,7 +1797,7 @@ export default function ArtistDetailPage() {
                         <Field label="Status">
                           <Select
                             value={editStatus}
-                            onChange={(e) => setEditStatus(e.target.value as any)}
+                            onChange={(e) => setEditStatus(e.target.value as "confirmed" | "pending" | "cancelled")}
                           >
                             <option value="confirmed">confirmed</option>
                             <option value="pending">pending</option>
@@ -1964,8 +1926,6 @@ export default function ArtistDetailPage() {
                     )}
                   </div>
                 </Field>
-
-
 
                 <Field label="Notes">
                   <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={6} />

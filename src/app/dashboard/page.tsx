@@ -77,84 +77,84 @@ export default function DashboardPage() {
   }, [weekGigs]);
 
   async function load() {
-    setMessage(null);
-    setLoading(true);
+    return supabase.auth.getSession().then(async ({ data: sessionData }) => {
+      setMessage(null);
+      setLoading(true);
+      const user = sessionData.session?.user;
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+      const active = getActiveAgencyId();
+      if (!active) {
+        setLoading(false);
+        setMessage("No active agency selected. Go to /me and choose an agency.");
+        return;
+      }
+      setAgencyId(active);
 
-    const active = getActiveAgencyId();
-    if (!active) {
+      const { data: agencyRow } = await supabase
+        .from("agencies")
+        .select("name")
+        .eq("id", active)
+        .single();
+
+      setAgencyName(agencyRow?.name ?? active);
+
+      // 1) Active artists count (status = 'active' OR status null treated as active)
+      const { count: artistCount, error: artistErr } = await supabase
+        .from("artists")
+        .select("id", { count: "exact", head: true })
+        .eq("agency_id", active)
+        .or("status.eq.active,status.is.null");
+
+      if (artistErr) {
+        setMessage(artistErr.message);
+      } else {
+        setActiveArtists(artistCount ?? 0);
+      }
+
+      // Date range for “this week”
+      const now = new Date();
+      const wkStart = startOfWeek(now).toISOString();
+      const wkEnd = endOfWeek(now).toISOString();
+
+      // 2) Gigs this week
+      const { data: wkData, error: wkErr } = await supabase
+        .from("gigs")
+        .select("id,artist_id,title,venue,city,starts_at,status,fee_cents")
+        .eq("agency_id", active)
+        .gte("starts_at", wkStart)
+        .lt("starts_at", wkEnd)
+        .order("starts_at", { ascending: true })
+        .limit(20);
+
+      if (wkErr) {
+        setMessage(wkErr.message);
+        setWeekGigs([]);
+      } else {
+        setWeekGigs((wkData ?? []) as GigRow[]);
+      }
+
+      // 3) Upcoming gigs (next 5)
+      const { data: upData, error: upErr } = await supabase
+        .from("gigs")
+        .select("id,artist_id,title,venue,city,starts_at,status,fee_cents")
+        .eq("agency_id", active)
+        .gte("starts_at", new Date().toISOString())
+        .order("starts_at", { ascending: true })
+        .limit(5);
+
+      if (upErr) {
+        setMessage(upErr.message);
+        setUpcomingGigs([]);
+      } else {
+        setUpcomingGigs((upData ?? []) as GigRow[]);
+      }
+
       setLoading(false);
-      setMessage("No active agency selected. Go to /me and choose an agency.");
-      return;
-    }
-    setAgencyId(active);
-
-    const { data: agencyRow } = await supabase
-      .from("agencies")
-      .select("name")
-      .eq("id", active)
-      .single();
-
-    setAgencyName(agencyRow?.name ?? active);
-
-    // 1) Active artists count (status = 'active' OR status null treated as active)
-    const { count: artistCount, error: artistErr } = await supabase
-      .from("artists")
-      .select("id", { count: "exact", head: true })
-      .eq("agency_id", active)
-      .or("status.eq.active,status.is.null");
-
-    if (artistErr) {
-      setMessage(artistErr.message);
-    } else {
-      setActiveArtists(artistCount ?? 0);
-    }
-
-    // Date range for “this week”
-    const now = new Date();
-    const wkStart = startOfWeek(now).toISOString();
-    const wkEnd = endOfWeek(now).toISOString();
-
-    // 2) Gigs this week
-    const { data: wkData, error: wkErr } = await supabase
-      .from("gigs")
-      .select("id,artist_id,title,venue,city,starts_at,status,fee_cents")
-      .eq("agency_id", active)
-      .gte("starts_at", wkStart)
-      .lt("starts_at", wkEnd)
-      .order("starts_at", { ascending: true })
-      .limit(20);
-
-    if (wkErr) {
-      setMessage(wkErr.message);
-      setWeekGigs([]);
-    } else {
-      setWeekGigs((wkData ?? []) as GigRow[]);
-    }
-
-    // 3) Upcoming gigs (next 5)
-    const { data: upData, error: upErr } = await supabase
-      .from("gigs")
-      .select("id,artist_id,title,venue,city,starts_at,status,fee_cents")
-      .eq("agency_id", active)
-      .gte("starts_at", new Date().toISOString())
-      .order("starts_at", { ascending: true })
-      .limit(5);
-
-    if (upErr) {
-      setMessage(upErr.message);
-      setUpcomingGigs([]);
-    } else {
-      setUpcomingGigs((upData ?? []) as GigRow[]);
-    }
-
-    setLoading(false);
+    });
   }
 
   useEffect(() => {

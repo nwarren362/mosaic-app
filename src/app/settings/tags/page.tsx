@@ -54,55 +54,55 @@ export default function TagsSettingsPage() {
   }, [tags]);
 
   async function load() {
-    setLoading(true);
-    setMessage(null);
+    return supabase.auth.getSession().then(async ({ data: sessionData }) => {
+      setMessage(null);
+      setLoading(true);
+      const user = sessionData.session?.user;
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+      const activeAgencyId = getActiveAgencyId();
 
-    const activeAgencyId = getActiveAgencyId();
+      if (!activeAgencyId) {
+        setLoading(false);
+        setMessage("No active agency selected. Go to /me and choose an agency.");
+        return;
+      }
 
-    if (!activeAgencyId) {
+      setAgencyId(activeAgencyId);
+
+      const { data: typeData, error: typeError } = await supabase
+        .from("agency_tag_types")
+        .select("id, agency_id, type, label, description, sort_order, active, created_at")
+        .eq("agency_id", activeAgencyId)
+        .order("sort_order", { ascending: true })
+        .order("label", { ascending: true });
+
+      if (typeError) {
+        setMessage(typeError.message);
+        setTagTypes([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data: tagData, error: tagError } = await supabase
+        .from("agency_tags")
+        .select("id, type")
+        .eq("agency_id", activeAgencyId);
+
+      if (tagError) {
+        setMessage(tagError.message);
+        setTags([]);
+      } else {
+        setTags((tagData ?? []) as AgencyTag[]);
+      }
+
+      setTagTypes((typeData ?? []) as AgencyTagType[]);
       setLoading(false);
-      setMessage("No active agency selected. Go to /me and choose an agency.");
-      return;
-    }
-
-    setAgencyId(activeAgencyId);
-
-    const { data: typeData, error: typeError } = await supabase
-      .from("agency_tag_types")
-      .select("id, agency_id, type, label, description, sort_order, active, created_at")
-      .eq("agency_id", activeAgencyId)
-      .order("sort_order", { ascending: true })
-      .order("label", { ascending: true });
-
-    if (typeError) {
-      setMessage(typeError.message);
-      setTagTypes([]);
-      setLoading(false);
-      return;
-    }
-
-    const { data: tagData, error: tagError } = await supabase
-      .from("agency_tags")
-      .select("id, type")
-      .eq("agency_id", activeAgencyId);
-
-    if (tagError) {
-      setMessage(tagError.message);
-      setTags([]);
-    } else {
-      setTags((tagData ?? []) as AgencyTag[]);
-    }
-
-    setTagTypes((typeData ?? []) as AgencyTagType[]);
-    setLoading(false);
+    });
   }
 
   async function addEntity() {

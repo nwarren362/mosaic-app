@@ -71,7 +71,6 @@ export default function TasksPage() {
   const [ownerFilter, setOwnerFilter] = useState<TaskOwnerFilter>("mine");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [agencyMembers, setAgencyMembers] = useState<AgencyMemberLookupRow[]>([]);
-  const [canManageAgencyTasks, setCanManageAgencyTasks] = useState(false);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [entityLabels, setEntityLabels] = useState<Record<string, string>>({});
 
@@ -87,67 +86,61 @@ export default function TasksPage() {
   const [manualEscalationTask, setManualEscalationTask] = useState<TaskRow | null>(null);
 
   async function loadTasks() {
-    setLoading(true);
-    setMessage(null);
+    return getSignedInUser().then(async ({ data: { user }, error: userError }) => {
+      setLoading(true);
+      setMessage(null);
 
-    const activeAgencyId = getActiveAgencyId();
+      const activeAgencyId = getActiveAgencyId();
 
-    if (!activeAgencyId) {
-      setTasks([]);
-      setEntityLabels({});
-      setCurrentUserId(null);
-      setAgencyMembers([]);
-      setCanManageAgencyTasks(false);
-      setMessage("No active agency selected. Go to /me and choose an agency.");
+      if (!activeAgencyId) {
+        setTasks([]);
+        setEntityLabels({});
+        setCurrentUserId(null);
+        setAgencyMembers([]);
+        setMessage("No active agency selected. Go to /me and choose an agency.");
+        setLoading(false);
+        return;
+      }
+
+      if (userError || !user) {
+        setTasks([]);
+        setEntityLabels({});
+        setCurrentUserId(null);
+        setAgencyMembers([]);
+        setMessage(userError?.message ?? "You must be signed in to view tasks.");
+        setLoading(false);
+        return;
+      }
+
+      setCurrentUserId(user.id);
+
+      const { members } =
+        await fetchAgencyMembersForTasks(activeAgencyId, user.id);
+      setAgencyMembers(members);
+
+      const { data, error } = await fetchOpenTasks(activeAgencyId, ownerFilter, user.id);
+
       setLoading(false);
-      return;
-    }
 
-    const {
-      data: { user },
-      error: userError,
-    } = await getSignedInUser();
+      if (error || !data) {
+        setTasks([]);
+        setEntityLabels({});
+        setMessage(error?.message ?? "Could not load tasks.");
+        return;
+      }
 
-    if (userError || !user) {
-      setTasks([]);
-      setEntityLabels({});
-      setCurrentUserId(null);
-      setAgencyMembers([]);
-      setCanManageAgencyTasks(false);
-      setMessage(userError?.message ?? "You must be signed in to view tasks.");
-      setLoading(false);
-      return;
-    }
+      const loadedTasks = data as TaskRow[];
+      const escalatedCount = await escalateOverdueTasks(loadedTasks, activeAgencyId, user.id);
 
-    setCurrentUserId(user.id);
+      setTasks(loadedTasks);
+      setEntityLabels(await fetchTaskEntityLabels(loadedTasks, activeAgencyId));
 
-    const { members, canManageAgencyTasks: userCanManageAgencyTasks } =
-      await fetchAgencyMembersForTasks(activeAgencyId, user.id);
-    setAgencyMembers(members);
-    setCanManageAgencyTasks(userCanManageAgencyTasks);
-
-    const { data, error } = await fetchOpenTasks(activeAgencyId, ownerFilter, user.id);
-
-    setLoading(false);
-
-    if (error || !data) {
-      setTasks([]);
-      setEntityLabels({});
-      setMessage(error?.message ?? "Could not load tasks.");
-      return;
-    }
-
-    const loadedTasks = data as TaskRow[];
-    const escalatedCount = await escalateOverdueTasks(loadedTasks, activeAgencyId, user.id);
-
-    setTasks(loadedTasks);
-    setEntityLabels(await fetchTaskEntityLabels(loadedTasks, activeAgencyId));
-
-    if (escalatedCount > 0) {
-      setMessage(
-        `${escalatedCount} overdue ${escalatedCount === 1 ? "task was" : "tasks were"} marked as escalated.`
-      );
-    }
+      if (escalatedCount > 0) {
+        setMessage(
+          `${escalatedCount} overdue ${escalatedCount === 1 ? "task was" : "tasks were"} marked as escalated.`
+        );
+      }
+    });
   }
 
   useEffect(() => {
@@ -383,7 +376,6 @@ export default function TasksPage() {
     : isAgencyOwnerFilter(ownerFilter)
       ? "All tasks"
       : possessiveName(selectedAgentName ?? "Agent");
-
 
   const kpiFilterCards: Array<{ label: string; value: number; filter: TaskFilter }> = [
     { label: "Open", value: taskStats.open, filter: "all" },

@@ -3,7 +3,6 @@
 import { SectionCard, Badge } from "@/components/ui";
 import type { VenueActivity } from "../_lib/types";
 import { formatDateTime } from "../_lib/formatters";
-import { logVenueActivity } from "../_lib/activity";
 
 type Props = {
   activities: VenueActivity[];

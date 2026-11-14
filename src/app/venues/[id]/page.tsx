@@ -45,7 +45,6 @@ type AgencyTag = {
   active: boolean | null;
 };
 
-
 type VenueTagRow = {
   tag_id: string;
 };
@@ -137,7 +136,6 @@ export default function VenueDetailPage() {
     [name, saving, dirty]
   );
   const updatedAtLabel = formatDateTime(venue?.updated_at);
-
 
   useEffect(() => {
     if (!venueId) return;
@@ -454,9 +452,6 @@ export default function VenueDetailPage() {
     setMembers(mergedMembers);
   }
 
-
-
-
   async function loadContacts(currentVenueId: string) {
     const { data, error } = await supabase
       .from("venue_contacts")
@@ -531,7 +526,6 @@ export default function VenueDetailPage() {
     setGigs(data as Gig[]);
   }
 
-
   async function refreshContactsAndActivity() {
     if (!venue) return;
     await loadContacts(venue.id);
@@ -579,7 +573,6 @@ export default function VenueDetailPage() {
     const parsedCapacity =
       trimmedCapacity === "" ? null : Number.parseInt(trimmedCapacity, 10);
 
-
     const { error } = await supabase.from("venues").update({
       name: trimmedName,
       display_address: displayAddress.trim() || null,
@@ -602,7 +595,6 @@ export default function VenueDetailPage() {
       setSaving(false);
       return false;
     }
-
 
     const previousDisplayAddress =
       venue.display_address ||
@@ -950,8 +942,8 @@ export default function VenueDetailPage() {
             const pastGigs = gigs.filter((g) => new Date(g.starts_at) < now).length;
 
             const ratings = feedbackItems
-              .map((f: any) => f.rating)
-              .filter((r: number | null) => typeof r === "number");
+              .map((f) => f.rating)
+              .filter((r): r is number => typeof r === "number");
 
             const avgRating =
               ratings.length > 0

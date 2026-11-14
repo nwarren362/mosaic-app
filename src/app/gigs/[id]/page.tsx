@@ -36,7 +36,6 @@ type VenueOption = {
   display_address: string | null;
 };
 
-
 function toDateTimeLocal(value: string | null) {
   if (!value) return "";
 
@@ -128,7 +127,7 @@ export default function GigDetailPage() {
   const [fee, setFee] = useState("");
   const [notes, setNotes] = useState("");
   const [promoImageUrl, setPromoImageUrl] = useState("");
-  const [venueDisplayAddress, setVenueDisplayAddress] = useState("");
+  const venueDisplayAddress = venues.find((venue) => venue.id === venueId)?.display_address ?? "";
   const [venueName, setVenueName] = useState("");
 
   const selectedArtistName =
@@ -195,11 +194,6 @@ export default function GigDetailPage() {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [dirty]);
-
-  useEffect(() => {
-    const selectedVenue = venues.find((venue) => venue.id === venueId);
-    setVenueDisplayAddress(selectedVenue?.display_address ?? "");
-  }, [venueId, venues]);
 
   function handleBack() {
     if (dirty) {
@@ -677,7 +671,6 @@ export default function GigDetailPage() {
                     const nextVenue = venues.find((venue) => venue.id === nextVenueId);
                     setVenueId(nextVenueId);
                     setVenueName(nextVenue?.name ?? "");
-                    setVenueDisplayAddress(nextVenue?.display_address ?? "");
                   }}
                 >
                   <option value="">Unassigned</option>

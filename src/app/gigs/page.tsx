@@ -125,67 +125,67 @@ export default function GigsPage() {
   const [newFee, setNewFee] = useState("");
 
   async function load() {
-    setMessage(null);
-    setLoading(true);
+    return supabase.auth.getSession().then(async ({ data: sessionData }) => {
+      setMessage(null);
+      setLoading(true);
+      const user = sessionData.session?.user;
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+      const active = getActiveAgencyId();
+      if (!active) {
+        setLoading(false);
+        setMessage("No active agency selected. Go to /me and choose an agency.");
+        return;
+      }
 
-    const active = getActiveAgencyId();
-    if (!active) {
-      setLoading(false);
-      setMessage("No active agency selected. Go to /me and choose an agency.");
-      return;
-    }
+      const nowIso = new Date().toISOString();
 
-    const nowIso = new Date().toISOString();
-
-    let q = supabase
-      .from("gigs")
-      .select(
-        "id,agency_id,artist_id,title,venue,city,starts_at,status,fee_cents, artists:artists(id,name)"
-      )
-      .eq("agency_id", active)
-      .order("starts_at", { ascending: tab !== "past" });
-
-    if (tab === "upcoming") q = q.gte("starts_at", nowIso);
-    if (tab === "past") q = q.lt("starts_at", nowIso);
-
-    const [
-      { data: gigData, error: gigError },
-      { data: artistData, error: artistError },
-      { data: venueData, error: venueError },
-    ] = await Promise.all([
-      q.limit(200),
-      supabase
-        .from("artists")
-        .select("id,name")
+      let q = supabase
+        .from("gigs")
+        .select(
+          "id,agency_id,artist_id,title,venue,city,starts_at,status,fee_cents, artists:artists(id,name)"
+        )
         .eq("agency_id", active)
-        .order("name", { ascending: true }),
-      supabase
-        .from("venues")
-        .select("id,name,city")
-        .eq("agency_id", active)
-        .order("name", { ascending: true }),
-    ]);
+        .order("starts_at", { ascending: tab !== "past" });
 
-    if (gigError || artistError || venueError) {
-      setMessage(gigError?.message ?? artistError?.message ?? venueError?.message ?? "Could not load gigs.");
-      setGigs([]);
-      setArtists([]);
-      setVenues([]);
+      if (tab === "upcoming") q = q.gte("starts_at", nowIso);
+      if (tab === "past") q = q.lt("starts_at", nowIso);
+
+      const [
+        { data: gigData, error: gigError },
+        { data: artistData, error: artistError },
+        { data: venueData, error: venueError },
+      ] = await Promise.all([
+        q.limit(200),
+        supabase
+          .from("artists")
+          .select("id,name")
+          .eq("agency_id", active)
+          .order("name", { ascending: true }),
+        supabase
+          .from("venues")
+          .select("id,name,city")
+          .eq("agency_id", active)
+          .order("name", { ascending: true }),
+      ]);
+
+      if (gigError || artistError || venueError) {
+        setMessage(gigError?.message ?? artistError?.message ?? venueError?.message ?? "Could not load gigs.");
+        setGigs([]);
+        setArtists([]);
+        setVenues([]);
+        setLoading(false);
+        return;
+      }
+
+      setGigs((gigData ?? []) as unknown as GigRow[]);
+      setArtists((artistData ?? []) as ArtistOption[]);
+      setVenues((venueData ?? []) as VenueOption[]);
       setLoading(false);
-      return;
-    }
-
-    setGigs((gigData ?? []) as unknown as GigRow[]);
-    setArtists((artistData ?? []) as ArtistOption[]);
-    setVenues((venueData ?? []) as VenueOption[]);
-    setLoading(false);
+    });
   }
 
   useEffect(() => {
