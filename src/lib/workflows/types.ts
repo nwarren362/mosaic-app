@@ -7,6 +7,7 @@ export type WorkflowEventType =
   | "gig.updated"
   | "gig.confirmed"
   | "gig.cancelled"
+  | "gig.archived"
   | "task.created"
   | "task.completed"
   | "task.reassigned"

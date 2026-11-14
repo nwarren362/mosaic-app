@@ -30,6 +30,7 @@ type ActivityTimelineProps = {
   entityType: ActivityEntityType;
   entityId: string;
   title?: string;
+  readOnly?: boolean;
 };
 
 function formatActivityDate(value: string) {
@@ -113,6 +114,7 @@ export function ActivityTimeline({
   entityType,
   entityId,
   title = "Activity",
+  readOnly = false,
 }: ActivityTimelineProps) {
   const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
   const [entryMode, setEntryMode] = useState<EntryMode>("note");
@@ -474,7 +476,7 @@ export function ActivityTimeline({
   return (
     <SectionCard title={`${title} (${entries.length})`}>
       <div style={{ display: "grid", gap: "var(--space-4)" }}>
-        <div style={{ display: "grid", gap: "var(--space-3)" }}>
+        {!readOnly && <div style={{ display: "grid", gap: "var(--space-3)" }}>
           <SegmentedControl
             ariaLabel="Activity entry type"
             value={entryMode}
@@ -531,7 +533,7 @@ export function ActivityTimeline({
               {saving ? "Adding…" : entryMode === "task" ? "Add task" : "Add note"}
             </Button>
           </div>
-        </div>
+        </div>}
 
         {loading ? (
           <div style={{ color: "var(--mutedText)", fontSize: 14 }}>Loading activity…</div>
@@ -592,7 +594,7 @@ export function ActivityTimeline({
                       flexWrap: "wrap",
                     }}
                   >
-                    {isTask(entry) ? (
+                    {isTask(entry) && !readOnly ? (
                       <ActionMenu
                         label="Task actions"
                         open={openTaskMenuId === entry.id}
@@ -628,7 +630,7 @@ export function ActivityTimeline({
                   </div>
                 </div>
 
-                {editingTaskId === entry.id ? (
+                {!readOnly && editingTaskId === entry.id ? (
                   <div
                     style={{
                       marginTop: "var(--space-3)",

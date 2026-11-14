@@ -774,3 +774,11 @@ export function SectionActions({
     </div>
   );
 }
+export function Checkbox({ children, ...props }: Omit<React.InputHTMLAttributes<HTMLInputElement>, "type">) {
+  return (
+    <label style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)", cursor: props.disabled ? "default" : "pointer" }}>
+      <input {...props} type="checkbox" style={{ marginTop: 4, flexShrink: 0, accentColor: "var(--accent)" }} />
+      <span>{children}</span>
+    </label>
+  );
+}

@@ -149,6 +149,7 @@ export default function GigsPage() {
           "id,agency_id,artist_id,title,venue,city,starts_at,status,fee_cents, artists:artists(id,name)"
         )
         .eq("agency_id", active)
+        .is("archived_at", null)
         .order("starts_at", { ascending: tab !== "past" });
 
       if (tab === "upcoming") q = q.gte("starts_at", nowIso);

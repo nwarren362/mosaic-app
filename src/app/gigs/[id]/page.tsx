@@ -6,6 +6,7 @@ import { Pencil } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Page, Card, Button, Input, Select, Field, SectionCard, StatTile, StatusBadge, Textarea } from "@/components/ui";
 import { ActivityTimeline } from "../../../components/ActivityTimeline";
+import { GigArchiveAction } from "@/components/GigArchiveAction";
 import { createDomainEvent, dispatchDomainEvent } from "@/lib/workflows";
 
 type GigStatus = "confirmed" | "pending" | "cancelled";
@@ -13,6 +14,9 @@ type GigStatus = "confirmed" | "pending" | "cancelled";
 type Gig = {
   id: string;
   agency_id: string;
+  created_by: string | null;
+  archived_at: string | null;
+  archive_reason: string | null;
   artist_id: string | null;
   venue_id: string | null;
   title: string | null;
@@ -154,7 +158,7 @@ export default function GigDetailPage() {
     );
   }, [gig, title, artistId, venueId, startsAt, status, fee, notes, promoImageUrl, venueName]);
 
-  const canSave = useMemo(() => Boolean(gig) && !saving && dirty, [gig, saving, dirty]);
+  const canSave = useMemo(() => Boolean(gig) && !gig?.archived_at && !saving && dirty, [gig, saving, dirty]);
 
   useEffect(() => {
     if (!gigId) return;
@@ -304,10 +308,12 @@ export default function GigDetailPage() {
       venue: venueName.trim() || null,
     };
 
-    const { error } = await supabase
+    const { data: savedGig, error } = await supabase
       .from("gigs")
       .update(payload)
-      .eq("id", gig.id);
+      .eq("id", gig.id)
+      .select("id")
+      .maybeSingle();
 
     setSaving(false);
 
@@ -319,6 +325,11 @@ export default function GigDetailPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
+    if (!savedGig) {
+      alert("The gig could not be updated. It may have been archived or your access changed. Reload the page.");
+      return false;
+    }
 
     const previousStatus = gig.status ?? "confirmed";
 
@@ -612,6 +623,7 @@ export default function GigDetailPage() {
                 type="button"
                 aria-label="Edit promo image URL"
                 title="Edit promo image URL"
+                disabled={Boolean(gig.archived_at)}
                 onClick={handleEditPromoImageUrl}
                 style={{
                   position: "absolute",
@@ -649,6 +661,13 @@ export default function GigDetailPage() {
           </div>
         </Card>
 
+        {gig.archived_at && (
+          <SectionCard title="Archived gig">
+            <p>Archived {formatGigDate(gig.archived_at)}. This record and its activity are read-only.</p>
+            <p>{gig.archive_reason}</p>
+          </SectionCard>
+        )}
+        <fieldset disabled={Boolean(gig.archived_at)} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <SectionCard title="Gig details">
           <div style={{ display: "grid", gap: "var(--space-4)" }}>
             <div className="grid gap-4 md:grid-cols-2">
@@ -737,11 +756,15 @@ export default function GigDetailPage() {
             </Field>
           </div>
         </SectionCard>
+        </fieldset>
+        <GigArchiveAction gig={gig} disabled={dirty || saving} onArchived={loadGigPage} />
       <div id="activity">
         <ActivityTimeline
+          key={gig.archived_at ?? "active"}
           agencyId={gig.agency_id}
           entityType="gig"
           entityId={gig.id}
+          readOnly={Boolean(gig.archived_at)}
         />
       </div>
       </div>

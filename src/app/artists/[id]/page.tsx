@@ -216,6 +216,7 @@ export default function ArtistDetailPage() {
         .select("id,title,venue_id,venue,city,starts_at,status,fee_cents")
         .eq("agency_id", active)
         .eq("artist_id", id)
+        .is("archived_at", null)
         .gte("starts_at", nowIso)
         .order("starts_at", { ascending: true })
         .limit(5);
@@ -231,6 +232,7 @@ export default function ArtistDetailPage() {
         .select("id,title,venue_id,venue,city,starts_at,status,fee_cents")
         .eq("agency_id", active)
         .eq("artist_id", id)
+        .is("archived_at", null)
         .lt("starts_at", nowIso)
         .order("starts_at", { ascending: false })
         .limit(5);
@@ -693,7 +695,7 @@ export default function ArtistDetailPage() {
     const feeCents = Math.round((Number(editFeePounds) || 0) * 100);
     const startsAtIso = new Date(editStartsAt).toISOString();
 
-    const { error } = await supabase
+    const { data: savedGig, error } = await supabase
       .from("gigs")
       .update({
         title: editTitle.trim(),
@@ -705,12 +707,19 @@ export default function ArtistDetailPage() {
         fee_cents: feeCents,
       })
       .eq("id", editingGig.id)
-      .eq("agency_id", agencyId);
+      .eq("agency_id", agencyId)
+      .select("id")
+      .maybeSingle();
 
     setEditSaving(false);
 
     if (error) {
       setMessage(error.message);
+      return;
+    }
+
+    if (!savedGig) {
+      setMessage("The gig could not be updated. It may have been archived or your access changed.");
       return;
     }
 
@@ -765,62 +774,6 @@ export default function ArtistDetailPage() {
     }
 
     setEditingGig(null);
-    await load();
-  }
-
-  async function deleteGig() {
-    if (!editingGig) return;
-
-    const ok = confirm(`Delete gig "${editingGig.title}"? This cannot be undone.`);
-    if (!ok) return;
-
-    setMessage(null);
-    setEditSaving(true);
-
-    const { data: deletedRows, error } = await supabase
-      .from("gigs")
-      .delete()
-      .eq("id", editingGig.id)
-      .eq("agency_id", agencyId)
-      .select("id");
-
-    setEditSaving(false);
-
-    if (error) {
-      if (
-        error.message.includes("permission") ||
-        error.message.includes("policy") ||
-        error.code === "42501"
-      ) {
-        setMessage(
-          "You do not have permission to delete gigs. Consider setting the gig status to Cancelled instead."
-        );
-      } else {
-        setMessage(`Failed to delete gig: ${error.message}`);
-      }
-      return;
-    }
-
-    if (!deletedRows || deletedRows.length === 0) {
-      setMessage(
-        "The gig was not deleted. You may not have permission to delete gigs, or the record may already have been changed. Consider setting the gig status to Cancelled instead."
-      );
-      return;
-    }
-
-    await logArtistActivity({
-      summary: `Gig deleted: ${editingGig.title}.`,
-      metadata: {
-        gig_id: editingGig.id,
-        gig_title: editingGig.title,
-        venue: editingGig.venue ?? null,
-        starts_at: editingGig.starts_at,
-      },
-    });
-    setEditingGig(null);
-    setUpcomingGigs((prev) => prev.filter((g) => g.id !== editingGig.id));
-    setPastGigs((prev) => prev.filter((g) => g.id !== editingGig.id));
-
     await load();
   }
 
@@ -1832,11 +1785,19 @@ export default function ArtistDetailPage() {
 
                         <Button
                           type="button"
-                          variant="danger"
-                          onClick={deleteGig}
+                          variant="secondary"
+                          onClick={() => {
+                            const hasChanges = editTitle !== (editingGig.title ?? "") ||
+                              editVenueId !== (editingGig.venue_id ?? "") ||
+                              editStartsAt !== toDatetimeLocalValue(editingGig.starts_at) ||
+                              editStatus !== editingGig.status ||
+                              editFeePounds !== ((editingGig.fee_cents ?? 0) / 100).toFixed(2);
+                            if (hasChanges && !confirm("Discard unsaved gig changes and open its details?")) return;
+                            router.push(`/gigs/${editingGig.id}`);
+                          }}
                           disabled={editSaving}
                         >
-                          Delete gig
+                          Open gig / archive
                         </Button>
                       </div>
 

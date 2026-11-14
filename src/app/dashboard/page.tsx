@@ -125,6 +125,7 @@ export default function DashboardPage() {
         .from("gigs")
         .select("id,artist_id,title,venue,city,starts_at,status,fee_cents")
         .eq("agency_id", active)
+        .is("archived_at", null)
         .gte("starts_at", wkStart)
         .lt("starts_at", wkEnd)
         .order("starts_at", { ascending: true })
@@ -142,6 +143,7 @@ export default function DashboardPage() {
         .from("gigs")
         .select("id,artist_id,title,venue,city,starts_at,status,fee_cents")
         .eq("agency_id", active)
+        .is("archived_at", null)
         .gte("starts_at", new Date().toISOString())
         .order("starts_at", { ascending: true })
         .limit(5);

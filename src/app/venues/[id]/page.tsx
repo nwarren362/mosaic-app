@@ -512,6 +512,7 @@ export default function VenueDetailPage() {
       .from("gigs")
       .select("id, title, starts_at, artist_id, status, fee_cents, city, venue")
       .eq("agency_id", agencyId)
+      .is("archived_at", null)
       .eq("venue_id", currentVenueId)
       .order("starts_at", { ascending: false });
 
