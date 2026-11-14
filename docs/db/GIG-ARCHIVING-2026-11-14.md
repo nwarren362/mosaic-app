@@ -1,6 +1,6 @@
 # Gig archiving — 14 November 2026
 
-Status: implemented, locally verified and accepted by the user. The user has authorised the release; Supabase application and deployment verification are in progress.
+Status: implemented, locally verified and accepted by the user. Released to Supabase and Vercel on 14 November 2026; live schema/permissions and authenticated production read checks passed.
 
 ## Agreed behaviour
 
@@ -52,4 +52,4 @@ The [local browser fixture](../../scripts/db/serve-gig-archive-fixture.mjs) uses
 
 ## Release requirements
 
-Local browser acceptance is complete and the user has accepted the implementation. Review a fresh live preflight before applying the migration. The migration must precede the matching UI deployment, since list queries require `archived_at`. Do not roll back to a UI that offers physical deletion without considering the new DB restrictions. The user has explicitly authorised this release.
+Local browser acceptance is complete and the user has accepted the implementation. Review a fresh live preflight before applying the migration. The migration must precede the matching UI deployment, since list queries require `archived_at`. Do not roll back to a UI that offers physical deletion without considering the new DB restrictions. The user explicitly authorised this release. See the [release record](../RELEASE-ARCHIVING-INVITATIONS-2026-11-14.md).

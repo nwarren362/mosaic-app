@@ -1,6 +1,6 @@
 # Invitation identity — 14 November 2026
 
-Status: tested locally and accepted for release by the user. Production application/verification is in progress. No live account, membership or invitation is used as a test fixture.
+Status: released to Supabase and Vercel on 14 November 2026; live function definitions/grants verified. No live account, membership or invitation is used as a test fixture.
 
 ## Behaviour
 
@@ -48,6 +48,6 @@ Native mode uses [native-postgres-test.mjs](../../scripts/db/native-postgres-tes
 
 ## Release
 
-Native rehearsal and user acceptance/release authorisation are complete. Fresh live preflight matches the rehearsed baseline; the function owner has SELECT/UPDATE on Auth users and bypasses their RLS. Verify function definition/grants and use synthetic identities for acceptance checks. Do not consume real invitations as an operational probe. The user explicitly authorised this release after native rehearsal.
+Native rehearsal and user acceptance/release authorisation are complete. Fresh live preflight matches the rehearsed baseline; the function owner has SELECT/UPDATE on Auth users and bypasses their RLS. Verify function definition/grants and use synthetic identities for acceptance checks. Do not consume real invitations as an operational probe. The user explicitly authorised this release after native rehearsal. See the [release record](../RELEASE-ARCHIVING-INVITATIONS-2026-11-14.md).
 
 Outstanding: explicit membership-management safeguards (including last-admin protection), admin UI visibility, remaining cross-tenant reference constraints, migration baseline and other audit items remain open.

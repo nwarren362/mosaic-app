@@ -1,0 +1,89 @@
+{
+  "body_matches": {
+    "accept_agency_invitation": true,
+    "archive_gig": true,
+    "guard_archived_gig_activity": true,
+    "guard_gig_lifecycle": true
+  },
+  "counts": {
+    "archived": 0,
+    "gigs": 10
+  },
+  "gigs_archive_columns": [
+    "archive_reason",
+    "archived_at",
+    "archived_by"
+  ],
+  "gigs_artist_fk": "FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE RESTRICT",
+  "gigs_policies": [
+    {
+      "cmd": "INSERT",
+      "permissive": "PERMISSIVE",
+      "policyname": "gigs_insert_agency_members",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "schemaname": "public",
+      "tablename": "gigs",
+      "with_check": "(EXISTS ( SELECT 1\n   FROM agency_memberships m\n  WHERE ((m.user_id = auth.uid()) AND (m.agency_id = gigs.agency_id))))"
+    },
+    {
+      "cmd": "SELECT",
+      "permissive": "PERMISSIVE",
+      "policyname": "gigs_select_agency_members",
+      "qual": "(EXISTS ( SELECT 1\n   FROM agency_memberships m\n  WHERE ((m.user_id = auth.uid()) AND (m.agency_id = gigs.agency_id))))",
+      "roles": [
+        "authenticated"
+      ],
+      "schemaname": "public",
+      "tablename": "gigs",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "permissive": "PERMISSIVE",
+      "policyname": "gigs_update_agency_members",
+      "qual": "((archived_at IS NULL) AND is_agency_member(agency_id))",
+      "roles": [
+        "authenticated"
+      ],
+      "schemaname": "public",
+      "tablename": "gigs",
+      "with_check": "((archived_at IS NULL) AND is_agency_member(agency_id))"
+    }
+  ],
+  "privileges": {
+    "archive_anon": false,
+    "archive_authenticated": true,
+    "gigs_archive_update": false,
+    "gigs_creator_update": false,
+    "gigs_delete": false,
+    "gigs_title_update": true,
+    "gigs_update_table": false,
+    "invite_anon": false,
+    "invite_authenticated": true
+  },
+  "security": [
+    {
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": true,
+      "name": "accept_agency_invitation",
+      "owner": "postgres"
+    },
+    {
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": true,
+      "name": "archive_gig",
+      "owner": "postgres"
+    }
+  ],
+  "triggers": [
+    "guard_archived_gig_activity",
+    "guard_gig_lifecycle"
+  ]
+}
