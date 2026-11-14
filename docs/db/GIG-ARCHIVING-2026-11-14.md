@@ -1,6 +1,6 @@
 # Gig archiving — 14 November 2026
 
-Status: implemented, locally verified and accepted by the user. Supabase migration and deployment are pending explicit release authorisation.
+Status: implemented, locally verified and accepted by the user. The user has authorised the release; Supabase application and deployment verification are in progress.
 
 ## Agreed behaviour
 
@@ -29,7 +29,7 @@ Concurrent archive/task edits can deadlock because both lock gig and task rows. 
 
 ## Verification
 
-- 55 assertions pass against real PostgreSQL 17 via PGlite: access, cancellation/time/reason/confirmation checks, cancellation task blocker, creator stamping, field protection, legacy ownership, no physical deletion, task closure/history preservation, RPC rollback on late failure, idempotence, archived immutability, artist FK and migration drift/rollback.
+- 55 assertions pass in both native PostgreSQL 17.12 and PGlite 17.5: access, cancellation/time/reason/confirmation checks, cancellation task blocker, creator stamping, field protection, legacy ownership, no physical deletion, task closure/history preservation, RPC rollback on late failure, idempotence, archived immutability, artist FK and migration drift/rollback.
 - Native PostgreSQL 17.12 + PostgREST 16.5 sample database started successfully, using the audited schema/policies and only synthetic records. UI connected through the actual Supabase client and PostgREST API. The local auth stub does not test Supabase Auth itself.
 - Browser: creator archived Gig 301 successfully. The archive reason appeared, form/activity became read-only, original task notes survived, and the remaining open task displayed completed. Gigs navigation no longer offered Gig 301.
 - Browser: Gig 305 correctly rejected archival while its cancellation notification task remained open, even with both confirmations checked.
@@ -52,4 +52,4 @@ The [local browser fixture](../../scripts/db/serve-gig-archive-fixture.mjs) uses
 
 ## Release requirements
 
-Local browser acceptance is complete and the user has accepted the implementation. Review a fresh live preflight before applying the migration. The migration must precede the matching UI deployment, since list queries require `archived_at`. Do not roll back to a UI that offers physical deletion without considering the new DB restrictions. No push is authorised for this work yet.
+Local browser acceptance is complete and the user has accepted the implementation. Review a fresh live preflight before applying the migration. The migration must precede the matching UI deployment, since list queries require `archived_at`. Do not roll back to a UI that offers physical deletion without considering the new DB restrictions. The user has explicitly authorised this release.
