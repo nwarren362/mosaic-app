@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { THEME_PRESETS, ThemePreset } from "@/lib/themePresets";
 import { getActiveAgencyId } from "@/lib/agencyContext";
+import { getAdministrationAccess } from "@/lib/administrationAccess";
 import AppShell from "@/components/AppShell";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
@@ -13,6 +14,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [agencyName, setAgencyName] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [isSuperUser, setIsSuperUser] = useState(false);
+  const [canManageInvitations, setCanManageInvitations] = useState(false);
 
   const [navOpen, setNavOpen] = useState(false);       // mobile drawer
   const [collapsed, setCollapsed] = useState(false);   // desktop sidebar collapse
@@ -43,17 +45,17 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       setAgencyName(null);
       setLogoUrl(null);
 
-      const { data: sessionData } = await supabase.auth.getSession();
-      const user = sessionData.session?.user;
-
-      if (!user) {
+      // Derive admin navigation from this user's own roles, never another member's role.
+      try {
+        const access = await getAdministrationAccess();
+        setIsSuperUser(access.isSuperUser);
+        setCanManageInvitations(access.isSuperUser || access.agencies.length > 0);
+        if (!access.userId) return;
+      } catch {
         setIsSuperUser(false);
+        setCanManageInvitations(false);
         return;
       }
-
-      // Super user flag
-      const { data: prof } = await supabase.from("profiles").select("is_super_user").eq("id", user.id).single();
-      setIsSuperUser(!!prof?.is_super_user);
 
       // Agency context
       const activeAgencyId = getActiveAgencyId();
@@ -153,6 +155,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
       <AppShell
         isSuperUser={isSuperUser}
+        canManageInvitations={canManageInvitations}
         navOpen={navOpen}
         setNavOpen={setNavOpen}
         collapsed={collapsed}

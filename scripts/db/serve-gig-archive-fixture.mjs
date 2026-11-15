@@ -11,7 +11,11 @@ const socket=root+'/socket';await mkdir(socket,{mode:0o700});
 const run=(cmd,args)=>execFileSync(cmd,args,{encoding:'utf8',stdio:['pipe','pipe','pipe']});
 run(pg+'initdb',['-D',root+'/data','-U','fixture_owner','--locale=C','--encoding=UTF8','--auth-local=trust','--auth-host=reject']);
 run(pg+'pg_ctl',['-D',root+'/data','-l',root+'/postgres.log','-o',`-k ${socket} -c listen_addresses='' -c unix_socket_permissions=0700`,'-w','start']);
-const sql=await fixtureSql()+await readFile(new URL('../../docs/db/migrations/20261114_gig_archiving.sql',import.meta.url),'utf8')+`\ncreate role authenticator login noinherit;grant authenticated,anon to authenticator;`;
+let sql=await fixtureSql()+await readFile(new URL('../../docs/db/migrations/20261114_gig_archiving.sql',import.meta.url),'utf8')+`\ncreate role authenticator login noinherit;grant authenticated,anon to authenticator;`;
+if(process.argv.includes('--membership')) {
+  sql+=await readFile(new URL('./membership-ui-fixture.sql',import.meta.url),'utf8');
+  sql+=await readFile(new URL('../../docs/db/migrations/20261115_membership_safeguards.sql',import.meta.url),'utf8');
+}
 await writeFile(root+'/fixture.sql',sql,{mode:0o600});
 run(pg+'psql',['-h',socket,'-U','fixture_owner','-d','postgres','-v','ON_ERROR_STOP=1','-f',root+'/fixture.sql']);
 const secret='synthetic-local-fixture-secret-at-least-thirty-two-bytes';

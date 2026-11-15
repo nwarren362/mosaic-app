@@ -3,6 +3,7 @@
 import { Page, Card, Button, Input } from "@/components/ui";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { getAdministrationAccess } from "@/lib/administrationAccess";
 import { useRouter } from "next/navigation";
 
 type Membership = {
@@ -49,39 +50,19 @@ export default function InvitationsPage() {
     return m?.agencies?.name ?? agencyId;
   }, [memberships, agencyId]);
 
-  async function load() {
-    return supabase.auth.getSession().then(async ({ data: sessionData }) => {
+  function load() {
+    return getAdministrationAccess().then(access => {
       setMessage(null);
-      const user = sessionData.session?.user;
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-
-      const { data: ms, error: mErr } = await supabase
-        .from("agency_memberships")
-        .select("agency_id, role, agencies:agencies(id, name)");
-
-      if (mErr) {
-        setMessage(mErr.message);
-        return;
-      }
-
-      const typed = (ms ?? []) as unknown as Membership[];
-      // Deduplicate memberships (safety belt)
-      const unique = new Map<string, Membership>();
-      for (const m of typed) {
-        const key = `${m.agency_id}`;
-        // Keep admin if duplicates exist
-        const existing = unique.get(key);
-        if (!existing) unique.set(key, m);
-        else if (existing.role !== "admin" && m.role === "admin") unique.set(key, m);
-      }
-
-  setMemberships(Array.from(unique.values()));
-
-      const firstAgencyId = typed[0]?.agency_id ?? "";
-      setAgencyId((prev) => prev || firstAgencyId);
+      if (!access.userId) { router.push("/login"); return; }
+      const allowed: Membership[] = access.agencies.map(agency => ({
+        agency_id: agency.id, role: "admin", agencies: agency,
+      }));
+      setMemberships(allowed);
+      setAgencyId(previous => allowed.some(m => m.agency_id === previous) ? previous : allowed[0]?.agency_id ?? "");
+    }).catch((error: unknown) => {
+      setMemberships([]);
+      setAgencyId("");
+      setMessage(error instanceof Error ? error.message : "Could not verify administrator access.");
     });
   }
 

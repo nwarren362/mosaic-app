@@ -69,12 +69,14 @@ function NavLink({ href, label, Icon, collapsed }: NavItem & { collapsed: boolea
 export default function AppShell({
   children,
   isSuperUser,
+  canManageInvitations,
   navOpen,
   setNavOpen,
   collapsed,
 }: {
   children: React.ReactNode;
   isSuperUser: boolean;
+  canManageInvitations: boolean;
   navOpen: boolean;
   setNavOpen: (open: boolean) => void;
   collapsed: boolean;
@@ -86,7 +88,7 @@ export default function AppShell({
     { href: "/gigs", label: "Gigs", Icon: Calendar },
     { href: "/tasks", label: "Tasks", Icon: ListTodo },
     { href: "/me", label: "Me", Icon: FileText },
-    { href: "/admin/invitations", label: "Invitations", Icon: Mail },
+    ...(canManageInvitations ? [{ href: "/admin/invitations", label: "Invitations", Icon: Mail }] : []),
   ];
 
   const admin: NavItem[] = [

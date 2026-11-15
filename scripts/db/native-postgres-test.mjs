@@ -1,5 +1,5 @@
 // Disposable native PostgreSQL adapter for SQL regression tests; private Unix socket, no TCP.
-import { spawn,execFileSync } from 'node:child_process';
+import { spawn,execFile,execFileSync } from 'node:child_process';
 import { mkdtemp,mkdir,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -53,6 +53,11 @@ export async function nativePostgresTest() {
           return {rows:JSON.parse(lines.join('\n'))};
         }
         await exec(text);return {rows:[]};
+      },
+      async concurrent(statements){
+        return Promise.all(statements.map(sql=>new Promise(resolve=>{
+          execFile(join(bin,'psql'),['-X','-qAt','-h',socket,'-U','fixture_owner','-d','postgres','-v','ON_ERROR_STOP=1','-c',sql],{encoding:'utf8',timeout:15000},(error,stdout,stderr)=>resolve({ok:!error,output:stdout+stderr}));
+        })));
       },
       async close(){
         client.stdin.end();
