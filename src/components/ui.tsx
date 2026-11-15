@@ -782,3 +782,8 @@ export function Checkbox({ children, ...props }: Omit<React.InputHTMLAttributes<
     </label>
   );
 }
+
+export const ErrorNotice = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(function ErrorNotice({ children, style, ...props }, ref) {
+  return <div {...props} ref={ref} role="alert" aria-live="assertive" tabIndex={-1}
+    style={{ border: "2px solid #e5484d", borderRadius: "var(--radius-md)", padding: "var(--space-3)", background: "var(--card)", color: "var(--text)", ...style }}>{children}</div>;
+});

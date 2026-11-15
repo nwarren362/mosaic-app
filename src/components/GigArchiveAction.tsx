@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Button, Checkbox, Field, SectionCard, Textarea } from "@/components/ui";
+import { Button, Checkbox, ErrorNotice, Field, SectionCard, Textarea } from "@/components/ui";
 
 type Props = {
   gig: {
@@ -26,6 +26,12 @@ export function GigArchiveAction({ gig, disabled, onArchived }: Props) {
   const [obligations, setObligations] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorNotice = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!error) return;
+    errorNotice.current?.focus({ preventScroll: true });
+    errorNotice.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [error]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -51,19 +57,30 @@ export function GigArchiveAction({ gig, disabled, onArchived }: Props) {
   async function archive() {
     setBusy(true);
     setError(null);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    const uncertain = "Mosaic could not confirm the archive result. Reload the gig before trying again.";
     try {
-      const { error: rpcError } = await supabase.rpc("archive_gig", {
+      const { data, error: rpcError } = await supabase.rpc("archive_gig", {
         p_gig_id: gig.id,
         p_agency_id: gig.agency_id,
         p_reason: reason.trim(),
         p_communications_complete: communications,
         p_obligations_settled: obligations,
-      });
-      if (rpcError) { setError(rpcError.message); return; }
+      }).abortSignal(controller.signal);
+      if (rpcError) {
+        setError(controller.signal.aborted ? uncertain : rpcError.message?.trim() || "Mosaic could not archive this gig. Reload the page and try again.");
+        return;
+      }
+      if (!data || data.id !== gig.id || typeof data.archived_at !== "string") {
+        setError(uncertain);
+        return;
+      }
       await onArchived();
     } catch {
-      setError("Could not confirm the archive result. Reload the gig before trying again.");
+      setError(uncertain);
     } finally {
+      window.clearTimeout(timeout);
       setBusy(false);
     }
   }
@@ -77,6 +94,14 @@ export function GigArchiveAction({ gig, disabled, onArchived }: Props) {
         <Button variant="danger" onClick={() => setOpen(true)} disabled={!eligible || disabled}>Archive gig…</Button>
       ) : (
         <div style={{ display: "grid", gap: "var(--space-3)" }}>
+          {error && <ErrorNotice ref={errorNotice}>
+            <strong>Archive needs your attention</strong>
+            <p>{error}</p>
+            {error.includes("cancellation communications follow-up task") && <>
+              <p>Complete the cancellation notification task in Activity below, then try archiving again.</p>
+              <Button type="button" variant="secondary" onClick={() => document.getElementById("activity")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Review gig tasks</Button>
+            </>}
+          </ErrorNotice>}
           <Field label="Archive reason" required>
             <Textarea aria-label="Archive reason" value={reason} onChange={e => setReason(e.target.value)} minLength={3} maxLength={1000} disabled={busy} />
           </Field>
@@ -86,7 +111,6 @@ export function GigArchiveAction({ gig, disabled, onArchived }: Props) {
           <Checkbox checked={obligations} onChange={e => setObligations(e.target.checked)} disabled={busy}>
             Any payments, refunds and other obligations are resolved. Mosaic does not verify these automatically.
           </Checkbox>
-          {error && <p role="alert">{error}</p>}
           <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)" }}>
             <Button variant="danger" onClick={archive} disabled={busy || disabled || !eligible || !communications || !obligations || reason.trim().length < 3}>
               {busy ? "Archiving…" : "Confirm archive"}
