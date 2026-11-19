@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Supabase machine-local connection state
+/supabase/.temp/
+/supabase/.branches/

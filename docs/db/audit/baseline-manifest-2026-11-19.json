@@ -1,0 +1,13 @@
+{
+  "captured_on": "2026-11-19",
+  "project_ref": "kugoybixpgzmkytijeld",
+  "status": "baseline adopted and permission migration applied/verified in production on 2026-11-19; source snapshot represents pre-permission state",
+  "baseline_version": "20261119000000",
+  "next_version": "20261119000100",
+  "files": {
+    "docs/db/audit/catalog-2026-11-19.json": "b7aa321e0523da9a178ab7dd97de668fc8549fa7afe6a082ca91a2f77324545f",
+    "docs/db/adopt-20261119-baseline.sql": "9c40c1a2f116a942fad91f767cd2274f82574d09f209698db380e697eaad2589",
+    "supabase/migrations/20261119000000_application_baseline.sql": "621cf4f11202d4eb8f3cb9a7255f8e6d4416f880ef5cd6f0d855e3264210592f",
+    "supabase/migrations/20261119000100_application_privileges.sql": "2ac78294d22bed3fca70668854dcab516ec7c8779190d6e8c104ecdf23bf3869"
+  }
+}

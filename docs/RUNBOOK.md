@@ -41,6 +41,12 @@ Use the current checkout for normal sequential development. Use a separate Git w
    - http://localhost:3000/login
    - http://localhost:3000/me
 
+## Database migrations and rehearsals
+
+See [the migration procedure](../supabase/README.md) and [the baseline/privilege review](db/BASELINE-PRIVILEGES-2026-11-19.md). Standard migrations now live under `supabase/migrations`; baseline adoption and the permission migration were applied and verified in production on 19 November 2026. Never replay the baseline CREATE statements over an existing database. Old manual repair scripts are historical evidence, not a second migration sequence to run after the baseline.
+
+Native schema/permission tests create disposable PostgreSQL clusters with private Unix sockets and synthetic data. Managed Supabase services are represented by minimal contracts; those tests do not replace hosted Auth/email/storage integration checks. Starting `npm run dev` alone uses the configured environment, normally the shared hosted database; it does not start or select the isolated sample backend automatically.
+
 ## Environment variables
 Local file (not committed):
 - `.env.local`
