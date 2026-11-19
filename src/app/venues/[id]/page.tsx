@@ -9,6 +9,7 @@ import { FilterChip, FilterRow } from "@/components/filters";
 import VenueDetailsSection from "./_components/VenueDetailsSection";
 import VenueContactsSection from "./_components/VenueContactsSection";
 import VenueFeedbackSection from "./_components/VenueFeedbackSection";
+import { useAgencyAdministration } from "@/lib/useAgencyAdministration";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { logVenueActivity } from "./_lib/activity";
 import {
@@ -76,6 +77,7 @@ export default function VenueDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showLifecycleMenu, setShowLifecycleMenu] = useState(false);
+  const { canDelete, checking: checkingAdministration } = useAgencyAdministration(venue?.agency_id ?? "");
   const lifecycleMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [name, setName] = useState("");
@@ -744,6 +746,7 @@ export default function VenueDetailPage() {
     if (!venue) return;
 
     setShowLifecycleMenu(false);
+    if (checkingAdministration) return;
 
     if (venue.status === "inactive") {
       const ok = confirm(`Reactivate ${venue.name}?`);
@@ -770,31 +773,39 @@ export default function VenueDetailPage() {
       return;
     }
 
+    // History-bearing archived gigs are hidden from the normal list but still count here.
+    const { count: allGigCount, error: gigCountError } = await supabase.from("gigs")
+      .select("id", { count: "exact", head: true }).eq("agency_id", venue.agency_id).eq("venue_id", venue.id);
+    if (gigCountError) { alert(gigCountError.message); return; }
+    const gigCount = allGigCount ?? 0;
     const dependencyMessages = [
-      gigs.length > 0 ? `${gigs.length} gig${gigs.length === 1 ? "" : "s"}` : null,
+      gigCount > 0 ? `${gigCount} gig${gigCount === 1 ? "" : "s"}` : null,
       contacts.length > 0 ? `${contacts.length} contact${contacts.length === 1 ? "" : "s"}` : null,
       feedbackItems.length > 0
         ? `${feedbackItems.length} feedback item${feedbackItems.length === 1 ? "" : "s"}`
         : null,
     ].filter(Boolean);
 
-    if (dependencyMessages.length === 0) {
+    if (canDelete && dependencyMessages.length === 0) {
       const ok = confirm(`Delete ${venue.name}? This cannot be undone.`);
       if (!ok) return;
 
-      const { error } = await supabase.from("venues").delete().eq("id", venue.id);
+      const { data: deletedVenue, error } = await supabase.from("venues").delete().eq("id", venue.id).eq("agency_id", venue.agency_id).select("id").maybeSingle();
 
       if (error) {
         alert(error.message);
         return;
       }
 
+      if (!deletedVenue) { alert("The venue was not deleted. Your administrator access may have changed. Reload the page."); return; }
       router.push("/venues");
       return;
     }
 
     const ok = confirm(
-      `This venue has related data (${dependencyMessages.join(", ")}), so it should not be deleted. Set it as inactive instead?`
+      canDelete
+        ? `This venue has related data (${dependencyMessages.join(", ")}), so it should not be deleted. Set it as inactive instead?`
+        : `Mark ${venue.name} as inactive? Its records and history will be kept.`
     );
 
     if (!ok) return;
@@ -908,6 +919,7 @@ export default function VenueDetailPage() {
                 >
                   <button
                     type="button"
+                    disabled={checkingAdministration}
                     onClick={handleDeleteOrDeactivateVenue}
                     style={{
                       width: "100%",
@@ -921,7 +933,7 @@ export default function VenueDetailPage() {
                       fontSize: 14,
                     }}
                   >
-                    {venue.status === "inactive" ? "Reactivate venue" : "Delete / Deactivate venue"}
+                    {venue.status === "inactive" ? "Reactivate venue" : canDelete ? "Delete / Deactivate venue" : "Deactivate venue"}
                   </button>
                 </div>
               ) : null}

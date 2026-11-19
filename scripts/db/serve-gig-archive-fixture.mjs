@@ -9,15 +9,33 @@ const pg='/opt/homebrew/opt/postgresql@17/bin/';
 const root=await mkdtemp('/private/tmp/mosaic-gig-ui-');
 const socket=root+'/socket';await mkdir(socket,{mode:0o700});
 const run=(cmd,args)=>execFileSync(cmd,args,{encoding:'utf8',stdio:['pipe','pipe','pipe']});
+let started=false;
+try {
 run(pg+'initdb',['-D',root+'/data','-U','fixture_owner','--locale=C','--encoding=UTF8','--auth-local=trust','--auth-host=reject']);
 run(pg+'pg_ctl',['-D',root+'/data','-l',root+'/postgres.log','-o',`-k ${socket} -c listen_addresses='' -c unix_socket_permissions=0700`,'-w','start']);
+started=true;
 let sql=await fixtureSql()+await readFile(new URL('../../docs/db/migrations/20261114_gig_archiving.sql',import.meta.url),'utf8')+`\ncreate role authenticator login noinherit;grant authenticated,anon to authenticator;`;
+if(process.argv.includes('--core-lifecycle')) {
+  sql+=await(await import('./core-lifecycle-ui-fixture.mjs')).coreLifecycleUiFixture();
+}
 if(process.argv.includes('--membership')) {
-  sql+=await readFile(new URL('./membership-ui-fixture.sql',import.meta.url),'utf8');
+  const membershipSql=await readFile(new URL('./membership-ui-fixture.sql',import.meta.url),'utf8');
+  // The full lifecycle fixture already supplies the audited invitation table/policies.
+  sql+=process.argv.includes('--core-lifecycle')
+    ? membershipSql.split('create table public.agency_invitations')[0]+membershipSql.slice(membershipSql.indexOf('create function public.invite_token_hash'))
+    : membershipSql;
   sql+=await readFile(new URL('../../docs/db/migrations/20261115_membership_safeguards.sql',import.meta.url),'utf8');
+}
+if(process.argv.includes('--core-lifecycle')) {
+  sql+=await readFile(new URL('../../docs/db/migrations/20261115_tenant_relationships.sql',import.meta.url),'utf8');
 }
 await writeFile(root+'/fixture.sql',sql,{mode:0o600});
 run(pg+'psql',['-h',socket,'-U','fixture_owner','-d','postgres','-v','ON_ERROR_STOP=1','-f',root+'/fixture.sql']);
+} catch(error) {
+  if(started) run(pg+'pg_ctl',['-D',root+'/data','-m','fast','-w','stop']);
+  await rm(root,{recursive:true,force:true});
+  throw error;
+}
 const secret='synthetic-local-fixture-secret-at-least-thirty-two-bytes';
 const jwt=n=>{const a=Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url'),b=Buffer.from(JSON.stringify({role:n?'authenticated':'anon',sub:n?uid(n):undefined,aud:'authenticated',exp:Math.floor(Date.now()/1000)+7200})).toString('base64url');return `${a}.${b}.${createHmac('sha256',secret).update(`${a}.${b}`).digest('base64url')}`;};
 await writeFile(root+'/postgrest.conf',`db-uri = "postgresql://authenticator@/postgres?host=${socket}"\ndb-schemas = "public"\ndb-anon-role = "anon"\njwt-secret = "${secret}"\nserver-host = "127.0.0.1"\nserver-port = 55481\n`,{mode:0o600});

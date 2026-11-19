@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { useAgencyAdministration } from "@/lib/useAgencyAdministration";
 import { getActiveAgencyId } from "@/lib/agencyContext";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import {
@@ -76,6 +77,7 @@ export default function ArtistDetailPage() {
   const id = String(params.id);
 
   const [agencyId, setAgencyId] = useState<string>("");
+  const { canDelete, checking: checkingAdministration } = useAgencyAdministration(agencyId);
 
   const [artist, setArtist] = useState<Artist | null>(null);
   const [loading, setLoading] = useState(true);
@@ -842,11 +844,27 @@ export default function ArtistDetailPage() {
     await load();
   }
 
+  async function markArtistInactive() {
+    if (!artist) return;
+    const { data, error } = await supabase.from("artists").update({ status: "inactive" })
+      .eq("id", artist.id).eq("agency_id", agencyId).select("id").maybeSingle();
+    if (error || !data) { setMessage(error?.message ?? "The artist could not be updated. Your access may have changed."); return; }
+    setStatus("inactive");
+    setArtist({ ...artist, status: "inactive" });
+    await load();
+    setMessage("Artist marked as inactive.");
+  }
+
   async function handleArtistLifecycleAction() {
     if (!artist) return;
 
     setMessage(null);
     setShowArtistMenu(false);
+    if (checkingAdministration) return;
+    if (!canDelete) {
+      if (confirm(`Mark "${artist.name}" as inactive? Its records and history will be kept.`)) await markArtistInactive();
+      return;
+    }
 
     const { count: gigCount, error: gigCountError } = await supabase
       .from("gigs")
@@ -879,21 +897,7 @@ export default function ArtistDetailPage() {
 
       if (!ok) return;
 
-      const { error } = await supabase
-        .from("artists")
-        .update({ status: "inactive" })
-        .eq("id", artist.id)
-        .eq("agency_id", agencyId);
-
-      if (error) {
-        setMessage(error.message);
-        return;
-      }
-
-      setStatus("inactive");
-      setArtist({ ...artist, status: "inactive" });
-      setMessage("Artist marked as inactive.");
-      await load();
+      await markArtistInactive();
       return;
     }
 
@@ -903,17 +907,20 @@ export default function ArtistDetailPage() {
 
     if (!ok) return;
 
-    const { error } = await supabase
+    const { data: deletedArtist, error } = await supabase
       .from("artists")
       .delete()
       .eq("id", artist.id)
-      .eq("agency_id", agencyId);
+      .eq("agency_id", agencyId)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       setMessage(error.message);
       return;
     }
 
+    if (!deletedArtist) { setMessage("The artist was not deleted. Your administrator access may have changed. Reload the page."); return; }
     router.push("/artists");
   }
 
@@ -1085,8 +1092,9 @@ export default function ArtistDetailPage() {
                   Reactivate artist
                 </button>
               ) : null}
-              <button
+              {(canDelete || status === "active") && <button
                 type="button"
+                disabled={checkingAdministration}
                 onClick={handleArtistLifecycleAction}
                 style={{
                   background: "transparent",
@@ -1099,8 +1107,8 @@ export default function ArtistDetailPage() {
                   fontSize: 13,
                 }}
               >
-                {status === "active" ? "Delete / deactivate artist" : "Delete artist"}
-              </button>
+                {canDelete ? (status === "active" ? "Delete / deactivate artist" : "Delete artist") : "Deactivate artist"}
+              </button>}
             </div>
           ) : null}
         </div>
