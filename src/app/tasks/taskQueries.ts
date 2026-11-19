@@ -170,7 +170,7 @@ export async function fetchTaskEntityLabels(loadedTasks: TaskRow[], agencyId: st
     gigIds.length > 0
       ? supabase
           .from("gigs")
-          .select("id, title, artists:artists(name)")
+          .select("id, title, artists:artists!gigs_artist_id_fkey(name)")
           .eq("agency_id", agencyId)
           .in("id", gigIds)
       : Promise.resolve({ data: [], error: null }),

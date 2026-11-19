@@ -146,7 +146,7 @@ export default function GigsPage() {
       let q = supabase
         .from("gigs")
         .select(
-          "id,agency_id,artist_id,title,venue,city,starts_at,status,fee_cents, artists:artists(id,name)"
+          "id,agency_id,artist_id,title,venue,city,starts_at,status,fee_cents, artists:artists!gigs_artist_id_fkey(id,name)"
         )
         .eq("agency_id", active)
         .is("archived_at", null)

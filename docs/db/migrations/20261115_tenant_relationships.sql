@@ -1,0 +1,48 @@
+-- Phase 1: enforce tenant consistency for concrete foreign-key relationships.
+-- Existing single-column FKs and their delete behaviour are preserved.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='30s';
+lock table public.agency_tags,public.artist_members,public.artist_tags,public.artists,public.contact_calls,public.contact_emails,public.gigs,public.venue_activity,public.venue_contacts,public.venue_feedback,public.venue_tags,public.venues in share row exclusive mode;
+do $guard$ begin
+ if exists(select 1 from pg_constraint where conname='gigs_artist_tenant_fkey' and conrelid='public.gigs'::regclass) then raise exception 'Tenant relationship constraints exist; inspect instead of reapplying';end if;
+ if (select jsonb_object_agg(conname,pg_get_constraintdef(oid,true)) from pg_constraint where connamespace='public'::regnamespace and conname in ('gigs_artist_id_fkey','gigs_venue_id_fkey','artist_members_artist_id_fkey','artist_tags_artist_id_fkey','artist_tags_tag_id_fkey','venue_contacts_venue_fkey','venue_tags_venue_id_fkey','venue_tags_tag_id_fkey','contact_emails_venue_fkey','contact_emails_contact_fkey','contact_calls_venue_fkey','contact_calls_contact_fkey','venue_feedback_venue_fkey','venue_feedback_artist_fkey','venue_feedback_gig_fkey','venue_activity_venue_fkey')) is distinct from '{"gigs_artist_id_fkey":"FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE RESTRICT","gigs_venue_id_fkey":"FOREIGN KEY (venue_id) REFERENCES venues(id) ON DELETE SET NULL","artist_members_artist_id_fkey":"FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE","artist_tags_artist_id_fkey":"FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE","artist_tags_tag_id_fkey":"FOREIGN KEY (tag_id) REFERENCES agency_tags(id) ON DELETE CASCADE","venue_contacts_venue_fkey":"FOREIGN KEY (venue_id) REFERENCES venues(id) ON DELETE CASCADE","venue_tags_venue_id_fkey":"FOREIGN KEY (venue_id) REFERENCES venues(id) ON DELETE CASCADE","venue_tags_tag_id_fkey":"FOREIGN KEY (tag_id) REFERENCES agency_tags(id) ON DELETE CASCADE","contact_emails_venue_fkey":"FOREIGN KEY (venue_id) REFERENCES venues(id) ON DELETE CASCADE","contact_emails_contact_fkey":"FOREIGN KEY (venue_contact_id) REFERENCES venue_contacts(id) ON DELETE CASCADE","contact_calls_venue_fkey":"FOREIGN KEY (venue_id) REFERENCES venues(id) ON DELETE CASCADE","contact_calls_contact_fkey":"FOREIGN KEY (venue_contact_id) REFERENCES venue_contacts(id) ON DELETE CASCADE","venue_feedback_venue_fkey":"FOREIGN KEY (venue_id) REFERENCES venues(id) ON DELETE CASCADE","venue_feedback_artist_fkey":"FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE SET NULL","venue_feedback_gig_fkey":"FOREIGN KEY (gig_id) REFERENCES gigs(id) ON DELETE SET NULL","venue_activity_venue_fkey":"FOREIGN KEY (venue_id) REFERENCES venues(id) ON DELETE CASCADE"}'::jsonb then raise exception 'Existing parent relationships changed; inspect before applying';end if;
+end;$guard$;
+alter table public.artists add constraint artists_tenant_parent_key unique(agency_id,id);
+alter table public.venues add constraint venues_tenant_parent_key unique(agency_id,id);
+alter table public.gigs add constraint gigs_tenant_parent_key unique(agency_id,id);
+alter table public.agency_tags add constraint agency_tags_tenant_parent_key unique(agency_id,id);
+alter table public.venue_contacts add constraint venue_contacts_tenant_parent_key unique(agency_id,venue_id,id);
+alter table public.gigs add constraint gigs_artist_tenant_fkey foreign key(agency_id,artist_id) references public.artists(agency_id,id) on delete RESTRICT not valid;
+alter table public.gigs add constraint gigs_venue_tenant_fkey foreign key(agency_id,venue_id) references public.venues(agency_id,id) on delete SET NULL (venue_id) not valid;
+alter table public.artist_members add constraint artist_members_artist_tenant_fkey foreign key(agency_id,artist_id) references public.artists(agency_id,id) on delete CASCADE not valid;
+alter table public.artist_tags add constraint artist_tags_artist_tenant_fkey foreign key(agency_id,artist_id) references public.artists(agency_id,id) on delete CASCADE not valid;
+alter table public.artist_tags add constraint artist_tags_tag_tenant_fkey foreign key(agency_id,tag_id) references public.agency_tags(agency_id,id) on delete CASCADE not valid;
+alter table public.venue_contacts add constraint venue_contacts_venue_tenant_fkey foreign key(agency_id,venue_id) references public.venues(agency_id,id) on delete CASCADE not valid;
+alter table public.venue_tags add constraint venue_tags_venue_tenant_fkey foreign key(agency_id,venue_id) references public.venues(agency_id,id) on delete CASCADE not valid;
+alter table public.venue_tags add constraint venue_tags_tag_tenant_fkey foreign key(agency_id,tag_id) references public.agency_tags(agency_id,id) on delete CASCADE not valid;
+alter table public.contact_emails add constraint contact_emails_venue_tenant_fkey foreign key(agency_id,venue_id) references public.venues(agency_id,id) on delete CASCADE not valid;
+alter table public.contact_emails add constraint contact_emails_contact_tenant_fkey foreign key(agency_id,venue_id,venue_contact_id) references public.venue_contacts(agency_id,venue_id,id) on delete CASCADE not valid;
+alter table public.contact_calls add constraint contact_calls_venue_tenant_fkey foreign key(agency_id,venue_id) references public.venues(agency_id,id) on delete CASCADE not valid;
+alter table public.contact_calls add constraint contact_calls_contact_tenant_fkey foreign key(agency_id,venue_id,venue_contact_id) references public.venue_contacts(agency_id,venue_id,id) on delete CASCADE not valid;
+alter table public.venue_feedback add constraint venue_feedback_venue_tenant_fkey foreign key(agency_id,venue_id) references public.venues(agency_id,id) on delete CASCADE not valid;
+alter table public.venue_feedback add constraint venue_feedback_artist_tenant_fkey foreign key(agency_id,artist_id) references public.artists(agency_id,id) on delete SET NULL (artist_id) not valid;
+alter table public.venue_feedback add constraint venue_feedback_gig_tenant_fkey foreign key(agency_id,gig_id) references public.gigs(agency_id,id) on delete SET NULL (gig_id) not valid;
+alter table public.venue_activity add constraint venue_activity_venue_tenant_fkey foreign key(agency_id,venue_id) references public.venues(agency_id,id) on delete CASCADE not valid;
+alter table public.gigs validate constraint gigs_artist_tenant_fkey;
+alter table public.gigs validate constraint gigs_venue_tenant_fkey;
+alter table public.artist_members validate constraint artist_members_artist_tenant_fkey;
+alter table public.artist_tags validate constraint artist_tags_artist_tenant_fkey;
+alter table public.artist_tags validate constraint artist_tags_tag_tenant_fkey;
+alter table public.venue_contacts validate constraint venue_contacts_venue_tenant_fkey;
+alter table public.venue_tags validate constraint venue_tags_venue_tenant_fkey;
+alter table public.venue_tags validate constraint venue_tags_tag_tenant_fkey;
+alter table public.contact_emails validate constraint contact_emails_venue_tenant_fkey;
+alter table public.contact_emails validate constraint contact_emails_contact_tenant_fkey;
+alter table public.contact_calls validate constraint contact_calls_venue_tenant_fkey;
+alter table public.contact_calls validate constraint contact_calls_contact_tenant_fkey;
+alter table public.venue_feedback validate constraint venue_feedback_venue_tenant_fkey;
+alter table public.venue_feedback validate constraint venue_feedback_artist_tenant_fkey;
+alter table public.venue_feedback validate constraint venue_feedback_gig_tenant_fkey;
+alter table public.venue_activity validate constraint venue_activity_venue_tenant_fkey;
+commit;
