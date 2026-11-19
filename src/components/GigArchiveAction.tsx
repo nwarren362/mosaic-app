@@ -96,7 +96,7 @@ export function GigArchiveAction({ gig, disabled, onArchived }: Props) {
         <div style={{ display: "grid", gap: "var(--space-3)" }}>
           {error && <ErrorNotice ref={errorNotice}>
             <strong>Archive needs your attention</strong>
-            <p>{error}</p>
+            {!error.includes("cancellation communications follow-up task") && <p>{error}</p>}
             {error.includes("cancellation communications follow-up task") && <>
               <p>Complete the cancellation notification task in Activity below, then try archiving again.</p>
               <Button type="button" variant="secondary" onClick={() => document.getElementById("activity")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Review gig tasks</Button>
