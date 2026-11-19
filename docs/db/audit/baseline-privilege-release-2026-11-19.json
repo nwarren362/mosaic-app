@@ -1,0 +1,175 @@
+{
+  "history": [
+    {
+      "name": "application_baseline",
+      "version": "20261119000000"
+    },
+    {
+      "name": "application_privileges",
+      "version": "20261119000100"
+    }
+  ],
+  "functions": [
+    {
+      "md5": "bf71e39bb2a0986982822fa0597e616a",
+      "anon": false,
+      "args": "p_token text",
+      "name": "accept_agency_invitation",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": true
+    },
+    {
+      "md5": "5e5363977ef9f1a55ca9ab234f84f10b",
+      "anon": false,
+      "args": "p_gig_id uuid, p_agency_id uuid, p_reason text, p_communications_complete boolean, p_obligations_settled boolean",
+      "name": "archive_gig",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": true
+    },
+    {
+      "md5": "32fd9b6acafb2f23ec3e6d95d15cf772",
+      "anon": false,
+      "args": "",
+      "name": "current_user_id",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": true
+    },
+    {
+      "md5": "c2952cbeba3532ae8642b042e14013bf",
+      "anon": false,
+      "args": "",
+      "name": "guard_agency_membership",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "md5": "dea3dace40586a39669498e8c2fd4b1c",
+      "anon": false,
+      "args": "",
+      "name": "guard_archived_gig_activity",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "md5": "c6bd8efde27804a108371960480e3282",
+      "anon": false,
+      "args": "",
+      "name": "guard_gig_lifecycle",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "md5": "999bfcf486fc78bf119d1cd5d1381677",
+      "anon": false,
+      "args": "",
+      "name": "handle_new_user",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "md5": "7bd78209834f737c4d0e5f348ceb6111",
+      "anon": false,
+      "args": "p_token text",
+      "name": "invite_token_hash",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": true
+    },
+    {
+      "md5": "80d9307ec68c9736683ac70c219628ba",
+      "anon": false,
+      "args": "p_agency_id uuid",
+      "name": "is_agency_admin",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": true
+    },
+    {
+      "md5": "a839dd3769433e7b554febc76b820a7f",
+      "anon": false,
+      "args": "p_agency_id uuid",
+      "name": "is_agency_member",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": true
+    },
+    {
+      "md5": "fc2bf33a96753f8aaf2711b86ffca90c",
+      "anon": false,
+      "args": "",
+      "name": "is_super_user",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": true
+    },
+    {
+      "md5": "42b6ad1916b091893960de1ec55707cc",
+      "anon": true,
+      "args": "",
+      "name": "monitor_health",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    },
+    {
+      "md5": "63f977f8e2e3db6a119fcbe248bf3314",
+      "anon": false,
+      "args": "",
+      "name": "set_updated_at",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "authenticated": false
+    }
+  ],
+  "schema_access": [
+    {
+      "role": "anon",
+      "usage": true,
+      "create": false,
+      "history_usage": false
+    },
+    {
+      "role": "authenticated",
+      "usage": true,
+      "create": false,
+      "history_usage": false
+    }
+  ],
+  "monitor_anon_grant": true,
+  "membership_role_update": true,
+  "tenant_constraint_count": 21,
+  "membership_identity_update": false
+}

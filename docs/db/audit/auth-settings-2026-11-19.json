@@ -1,0 +1,15 @@
+{
+  "disable_signup": false,
+  "external_email_enabled": true,
+  "external_anonymous_users_enabled": false,
+  "mailer_autoconfirm": true,
+  "password_min_length": 6,
+  "password_required_characters": null,
+  "password_hibp_enabled": false,
+  "security_manual_linking_enabled": false,
+  "security_refresh_token_reuse_interval": 10,
+  "jwt_exp": 3600,
+  "rate_limit_email_sent": 2,
+  "rate_limit_token_refresh": 150,
+  "rate_limit_verify": 30
+}
