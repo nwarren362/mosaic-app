@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
@@ -9,6 +9,7 @@ import { getActiveAgencyId } from "@/lib/agencyContext";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import {
   Page,
+  DisclosureButton,
   SectionCard,
   Button,
   Input,
@@ -104,6 +105,10 @@ export default function ArtistDetailPage() {
   const [gigSaving, setGigSaving] = useState(false);
 
   const [editingGig, setEditingGig] = useState<Gig | null>(null);
+  const gigEditorHeading = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (editingGig) gigEditorHeading.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [editingGig]);
   const [editTitle, setEditTitle] = useState("");
   const [editVenueId, setEditVenueId] = useState("");
   const [editStartsAt, setEditStartsAt] = useState("");
@@ -1639,179 +1644,178 @@ export default function ArtistDetailPage() {
                     <div style={{ color: "var(--mutedText)" }}>No gigs yet.</div>
                   ) : (
                     visibleGigs.map((g) => (
-                      <div
-                        key={g.id}
-                        onClick={() => beginEditGig(g)}
-                        style={{
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          borderRadius: "var(--radius-lg)",
-                          padding: "12px 12px",
-                          background: "rgba(255,255,255,0.02)",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 12,
-                            flexWrap: "wrap",
-                          }}
+                      <Fragment key={g.id}>
+                        <DisclosureButton
+                          expanded={editingGig?.id === g.id}
+                          aria-controls={editingGig?.id === g.id ? `gig-editor-${g.id}` : undefined}
+                          onClick={() => beginEditGig(g)}
+                          disabled={editSaving}
                         >
-                          <div style={{ fontWeight: 900 }}>{g.title}</div>
-                          <StatusBadge
-                            tone={
-                              g.status === "confirmed"
-                                ? "success"
-                                : g.status === "pending"
-                                ? "warning"
-                                : "danger"
-                            }
+                          <span
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 12,
+                              flexWrap: "wrap",
+                            }}
                           >
-                            {g.status}
-                          </StatusBadge>
-                        </div>
+                            <span style={{ fontWeight: 900 }}>{g.title}</span>
+                            <StatusBadge
+                              tone={
+                                g.status === "confirmed"
+                                  ? "success"
+                                  : g.status === "pending"
+                                  ? "warning"
+                                  : "danger"
+                              }
+                            >
+                              {g.status}
+                            </StatusBadge>
+                          </span>
 
-                        <div style={{ marginTop: 6, color: "var(--mutedText)", fontSize: 14 }}>
-                          {new Date(g.starts_at).toLocaleString()} · {g.city ?? "—"} ·{" "}
-                          {g.venue ?? "—"} · £{(g.fee_cents / 100).toFixed(2)}
-                        </div>
-                      </div>
+                          <span style={{ display: "block", marginTop: 6, color: "var(--mutedText)", fontSize: 14 }}>
+                            {new Date(g.starts_at).toLocaleString()} · {g.city ?? "—"} ·{" "}
+                            {g.venue ?? "—"} · £{(g.fee_cents / 100).toFixed(2)}
+                          </span>
+                        </DisclosureButton>
+                        {editingGig?.id === g.id && (
+                          <div
+                            id={`gig-editor-${g.id}`}
+                            role="region"
+                            aria-labelledby={`gig-editor-heading-${g.id}`}
+                            style={{
+                              marginTop: "var(--space-3)",
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              borderRadius: "var(--radius-lg)",
+                              padding: 12,
+                              background: "rgba(255,255,255,0.02)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 12,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <div ref={gigEditorHeading} id={`gig-editor-heading-${g.id}`} style={{ fontWeight: 900, scrollMarginTop: 80 }}>Edit gig</div>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => setEditingGig(null)}
+                                disabled={editSaving}
+                              >
+                                Close
+                              </Button>
+                            </div>
+
+                            <div style={{ height: 10 }} />
+
+                            <div style={{ display: "grid", gap: "var(--space-3)" }}>
+                              <Field label="Title" required>
+                                <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+                              </Field>
+
+                              <div style={{ display: "grid", gap: "var(--space-3)" }}>
+                                <Field label="Venue">
+                                  <Select
+                                    value={editVenueId}
+                                    onChange={(e) => setEditVenueId(e.target.value)}
+                                  >
+                                    <option value="">Select venue</option>
+                                    {venues.map((venue) => (
+                                      <option key={venue.id} value={venue.id}>
+                                        {venue.name}
+                                        {venue.city ? ` · ${venue.city}` : ""}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                </Field>
+
+                                {editVenueId ? (
+                                  <div style={{ fontSize: 13, color: "var(--mutedText)" }}>
+                                    City will be filled automatically from the selected venue.
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 160px), 1fr))",
+                                  gap: "var(--space-3)",
+                                }}
+                              >
+                                <Field label="Starts at" required>
+                                  <Input
+                                    type="datetime-local"
+                                    value={editStartsAt}
+                                    onChange={(e) => setEditStartsAt(e.target.value)}
+                                  />
+                                </Field>
+
+                                <Field label="Status">
+                                  <Select
+                                    value={editStatus}
+                                    onChange={(e) => setEditStatus(e.target.value as "confirmed" | "pending" | "cancelled")}
+                                  >
+                                    <option value="confirmed">confirmed</option>
+                                    <option value="pending">pending</option>
+                                    <option value="cancelled">cancelled</option>
+                                  </Select>
+                                </Field>
+
+                                <Field label="Fee (£)">
+                                  <Input
+                                    value={editFeePounds}
+                                    onChange={(e) => setEditFeePounds(e.target.value)}
+                                  />
+                                </Field>
+                              </div>
+
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: "var(--space-2)",
+                                  flexWrap: "wrap",
+                                  marginTop: 6,
+                                }}
+                              >
+                                <Button
+                                  type="button"
+                                  variant="primary"
+                                  onClick={saveGigEdits}
+                                  disabled={editSaving}
+                                >
+                                  {editSaving ? "Saving…" : "Save changes"}
+                                </Button>
+
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() => {
+                                    const hasChanges = editTitle !== (editingGig.title ?? "") ||
+                                      editVenueId !== (editingGig.venue_id ?? "") ||
+                                      editStartsAt !== toDatetimeLocalValue(editingGig.starts_at) ||
+                                      editStatus !== editingGig.status ||
+                                      editFeePounds !== ((editingGig.fee_cents ?? 0) / 100).toFixed(2);
+                                    if (hasChanges && !confirm("Discard unsaved gig changes and open its details?")) return;
+                                    router.push(`/gigs/${editingGig.id}`);
+                                  }}
+                                  disabled={editSaving}
+                                >
+                                  Open gig details
+                                </Button>
+                              </div>
+
+                            </div>
+                          </div>
+                        )}
+                      </Fragment>
                     ))
                   )}
                 </div>
-
-                {editingGig && (
-                  <div
-                    style={{
-                      marginTop: "var(--space-3)",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      borderRadius: "var(--radius-lg)",
-                      padding: 12,
-                      background: "rgba(255,255,255,0.02)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div style={{ fontWeight: 900 }}>Edit gig</div>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => setEditingGig(null)}
-                        disabled={editSaving}
-                      >
-                        Close
-                      </Button>
-                    </div>
-
-                    <div style={{ height: 10 }} />
-
-                    <div style={{ display: "grid", gap: "var(--space-3)" }}>
-                      <Field label="Title" required>
-                        <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
-                      </Field>
-
-                      <div style={{ display: "grid", gap: "var(--space-3)" }}>
-                        <Field label="Venue">
-                          <Select
-                            value={editVenueId}
-                            onChange={(e) => setEditVenueId(e.target.value)}
-                          >
-                            <option value="">Select venue</option>
-                            {venues.map((venue) => (
-                              <option key={venue.id} value={venue.id}>
-                                {venue.name}
-                                {venue.city ? ` · ${venue.city}` : ""}
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
-
-                        {editVenueId ? (
-                          <div style={{ fontSize: 13, color: "var(--mutedText)" }}>
-                            City will be filled automatically from the selected venue.
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr 1fr",
-                          gap: "var(--space-3)",
-                        }}
-                      >
-                        <Field label="Starts at" required>
-                          <Input
-                            type="datetime-local"
-                            value={editStartsAt}
-                            onChange={(e) => setEditStartsAt(e.target.value)}
-                          />
-                        </Field>
-
-                        <Field label="Status">
-                          <Select
-                            value={editStatus}
-                            onChange={(e) => setEditStatus(e.target.value as "confirmed" | "pending" | "cancelled")}
-                          >
-                            <option value="confirmed">confirmed</option>
-                            <option value="pending">pending</option>
-                            <option value="cancelled">cancelled</option>
-                          </Select>
-                        </Field>
-
-                        <Field label="Fee (£)">
-                          <Input
-                            value={editFeePounds}
-                            onChange={(e) => setEditFeePounds(e.target.value)}
-                          />
-                        </Field>
-                      </div>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "var(--space-2)",
-                          flexWrap: "wrap",
-                          marginTop: 6,
-                        }}
-                      >
-                        <Button
-                          type="button"
-                          variant="primary"
-                          onClick={saveGigEdits}
-                          disabled={editSaving}
-                        >
-                          {editSaving ? "Saving…" : "Save changes"}
-                        </Button>
-
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={() => {
-                            const hasChanges = editTitle !== (editingGig.title ?? "") ||
-                              editVenueId !== (editingGig.venue_id ?? "") ||
-                              editStartsAt !== toDatetimeLocalValue(editingGig.starts_at) ||
-                              editStatus !== editingGig.status ||
-                              editFeePounds !== ((editingGig.fee_cents ?? 0) / 100).toFixed(2);
-                            if (hasChanges && !confirm("Discard unsaved gig changes and open its details?")) return;
-                            router.push(`/gigs/${editingGig.id}`);
-                          }}
-                          disabled={editSaving}
-                        >
-                          Open gig / archive
-                        </Button>
-                      </div>
-
-                    </div>
-                  </div>
-                )}
               </div>
             </SectionCard>
           </div>

@@ -1,5 +1,14 @@
 import React, { forwardRef } from "react";
 
+export function DisclosureButton({ expanded, style, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { expanded: boolean }) {
+  return <button {...props} type="button" aria-expanded={expanded} style={{
+    width: "100%", textAlign: "left", color: "var(--text)", font: "inherit",
+    border: `1px solid ${expanded ? "var(--primary)" : "var(--border)"}`,
+    borderRadius: "var(--radius-lg)", padding: 12, minHeight: 44,
+    background: "var(--card)", cursor: "pointer", ...style,
+  }} />;
+}
+
 export function Page({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
     <main
