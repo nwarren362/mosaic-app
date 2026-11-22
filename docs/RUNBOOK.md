@@ -132,3 +132,7 @@ Fix:
 - `/me`
 - `/admin/invitations`
 - `/accept-invite?token=...`
+
+### Controlled confirmation test passed — 22 November
+
+User configured IONOS SMTP directly in Supabase and explicitly approved enabling Confirm email for a fresh user-controlled test alias. A read-only check confirmed the address was unused; mailer_autoconfirm was set to false, preserving sender and redirect settings. No message was sent by the settings step. The user registered directly on Vercel and supplied screenshots confirming receipt from Mosaic (development) <nigel@ontap365.com> and a successful Email confirmed result at the Vercel /auth/confirm route. Delivery and mailbox confirmation passed; no password or confirmation token was retained. After separate explicit approval, the administrator created an agent invitation for the new confirmed test account in Mosaic Music. The generated link was accepted in the separate recipient session; the administrator list showed an acceptance timestamp. The account displayed only its Mosaic Music agent membership, read ten agency gigs under All and was denied direct administration access. No additional email was sent and no invitation token was retained in repository evidence. The user approved keeping email confirmation enabled for all new registrations after the successful test. Existing automatically confirmed accounts are not retroactively reverified. Existing users retain their login state.

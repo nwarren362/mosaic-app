@@ -1,0 +1,24 @@
+{
+  "tested_on": "2026-11-22",
+  "address_previously_registered": false,
+  "confirmation_required": true,
+  "smtp_sender": "nigel@ontap365.com",
+  "email_sent_by_this_step": false,
+  "note": "User registered and entered a password directly in Mosaic; email delivery and confirmation passed. Existing accounts were not retroactively reverified.",
+  "test_recipient": "Fresh user-controlled alias, verified unused",
+  "status": "Live registration, email delivery, confirmation and authorised agency invitation acceptance passed",
+  "delivery_confirmed_by_user": true,
+  "confirmation_return_confirmed_by_user": true,
+  "actual_sender_confirmed_by_user": "nigel@ontap365.com",
+  "agency_invitation_acceptance_tested": true,
+  "confirmation_setting_disposition": "User approved keeping email confirmation required for all new registrations on 2026-11-22",
+  "evidence": "User-provided screenshots of received signup email and /auth/confirm success; token URLs and password not retained",
+  "agency_invitation_result": {
+    "agency": "Mosaic Music",
+    "role": "agent",
+    "accepted_record_verified": true,
+    "agency_gigs_readable": 10,
+    "administration_denied": true,
+    "additional_email_sent": false
+  }
+}
