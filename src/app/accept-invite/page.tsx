@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Page, Card, Button } from "@/components/ui";
 import { setActiveAgencyId } from "@/lib/agencyContext";
+import { browserInvitationStorage, forgetAcceptedInvitation, rememberInvitation } from "@/lib/authNavigation";
 
 function AcceptInviteInner() {
   const router = useRouter();
@@ -12,8 +13,10 @@ function AcceptInviteInner() {
 
   const [status, setStatus] = useState<"idle" | "working" | "success" | "error">("idle");
   const [message, setMessage] = useState<string>("Preparing…");
+  const acceptance = useRef<{ token: string; request: Promise<{ data: unknown; error: { message: string } | null }> } | null>(null);
 
   useEffect(() => {
+    let active = true;
     async function run() {
       setStatus("working");
       setMessage("Validating invitation…");
@@ -25,12 +28,18 @@ function AcceptInviteInner() {
         return;
       }
 
-      // If not signed in, store token and redirect to login
+      // Retain the invitation through signup, confirmation and failed acceptance attempts.
+      const remembered = rememberInvitation(browserInvitationStorage, token);
       const { data: sessionData } = await supabase.auth.getSession();
+      if (!active) return;
       const user = sessionData.session?.user;
 
       if (!user) {
-        localStorage.setItem("pending_invite_token", token);
+        if (!remembered) {
+          setStatus("error");
+          setMessage("Browser storage is unavailable. Sign in or create your account, then reopen the original invitation link.");
+          return;
+        }
         setStatus("working");
         setMessage("Please log in to accept the invite…");
         router.push("/login");
@@ -40,9 +49,11 @@ function AcceptInviteInner() {
       setMessage("Accepting invitation…");
 
       // Call RPC to accept invite
-      const { data, error } = await supabase.rpc("accept_agency_invitation", {
-        p_token: token,
-      });
+      if (acceptance.current?.token !== token) {
+        acceptance.current = { token, request: Promise.resolve(supabase.rpc("accept_agency_invitation", { p_token: token })) };
+      }
+      const { data, error } = await acceptance.current.request;
+      if (!active) return;
 
       if (error) {
         setStatus("error");
@@ -58,6 +69,11 @@ function AcceptInviteInner() {
 
       if (agencyId) {
         setActiveAgencyId(agencyId);
+        forgetAcceptedInvitation(browserInvitationStorage, token);
+      } else {
+        setStatus("error");
+        setMessage("Mosaic could not confirm the invitation result. Please reload the invitation before trying again.");
+        return;
       }
 
       setStatus("success");
@@ -66,7 +82,12 @@ function AcceptInviteInner() {
       router.push("/me");
     }
 
-    run();
+    void run().catch(() => {
+      if (!active) return;
+      setStatus("error");
+      setMessage("Mosaic could not confirm the invitation result. Check your connection and reload the invitation before trying again.");
+    });
+    return () => { active = false; };
   }, [router, searchParams]);
 
   return (

@@ -4,6 +4,7 @@ import { Button, Input } from "@/components/ui";
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
+import { browserInvitationStorage, postAuthDestination } from "@/lib/authNavigation";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,14 +27,7 @@ export default function LoginPage() {
       return;
     }
 
-    const pending = localStorage.getItem("pending_invite_token");
-    if (pending) {
-      localStorage.removeItem("pending_invite_token");
-      router.push(`/accept-invite?token=${encodeURIComponent(pending)}`);
-      return;
-    }
-
-    router.push("/me");
+    router.push(postAuthDestination(browserInvitationStorage));
   }
 
   return (

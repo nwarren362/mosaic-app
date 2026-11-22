@@ -1,5 +1,9 @@
 import React, { forwardRef } from "react";
 
+export function FormStack({ style, ...props }: React.FormHTMLAttributes<HTMLFormElement>) {
+  return <form {...props} style={{ display: "grid", gap: "var(--space-3)", ...style }} />;
+}
+
 export function DisclosureButton({ expanded, style, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { expanded: boolean }) {
   return <button {...props} type="button" aria-expanded={expanded} style={{
     width: "100%", textAlign: "left", color: "var(--text)", font: "inherit",

@@ -1,0 +1,45 @@
+// No network or real accounts: exercise invitation retention and confirmation decisions.
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import ts from 'typescript';
+const source=await readFile(new URL('../../src/lib/authNavigation.ts',import.meta.url),'utf8');
+const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {rememberInvitation,postAuthDestination,forgetAcceptedInvitation,confirmationRedirectUrl,checkEmailConfirmation}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const values=new Map();
+const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+let checks=0;
+const eq=(actual,expected,label)=>{assert.deepEqual(actual,expected,label);checks++;};
+eq(postAuthDestination(storage),'/me','No invitation has a fixed safe destination');
+eq(rememberInvitation(storage,'sample&next=https://other.test'),true,'Remember invitation');
+const dest='/accept-invite?token=sample%26next%3Dhttps%3A%2F%2Fother.test';
+eq(postAuthDestination(storage),dest,'Token encoded, never treated as redirect');
+eq(postAuthDestination(storage),dest,'Reading destination does not consume invitation');
+forgetAcceptedInvitation(storage,'different');eq(postAuthDestination(storage),dest,'Other-tab invitation retained');
+forgetAcceptedInvitation(storage,'sample&next=https://other.test');eq(postAuthDestination(storage),'/me','Only accepted token cleared');
+const blocked={getItem(){throw Error('blocked');},setItem(){throw Error('blocked');},removeItem(){throw Error('blocked');}};
+eq(rememberInvitation(blocked,'sample'),false,'Storage failure detected');
+eq(postAuthDestination(blocked),'/me','Storage failure has a safe fallback');
+forgetAcceptedInvitation(blocked,'sample');checks++;
+rememberInvitation(storage,'x'.repeat(2049));eq(postAuthDestination(storage),'/me','Oversized local token ignored');
+values.clear();
+eq(confirmationRedirectUrl('https://mosaic-app.vercel.app'), 'https://mosaic-app.vercel.app/auth/confirm','Production return path');
+eq(confirmationRedirectUrl('http://localhost:3000'), 'http://localhost:3000/auth/confirm','Local return path');
+let sessionCalls=0,userCalls=0;
+const auth={getSession:async()=>{sessionCalls++;return {data:{session:{}},error:null};},getUser:async()=>{userCalls++;return {data:{user:{email_confirmed_at:'2026-11-22T12:00:00Z'}},error:null};}};
+for(const suffix of ['#error=access_denied&error_code=otp_expired&error_description=secret','?error_code=otp_expired','?error_description=secret']){
+ const result=await checkEmailConfirmation(auth,'https://mosaic-app.vercel.app/auth/confirm'+suffix,storage);
+ eq(result.status,'error','Provider failure beats existing valid session');
+ eq(result.message.includes('secret'),false,'Do not echo raw callback parameters');
+}
+eq(sessionCalls,0,'Expired link does not read an unrelated cached session');
+eq(userCalls,0,'Expired link does not call user endpoint');
+eq((await checkEmailConfirmation({...auth,getSession:async()=>({data:{session:null},error:null})},'https://mosaic-app.vercel.app/auth/confirm',storage)).status,'error','Missing session explained');
+eq((await checkEmailConfirmation({...auth,getSession:async()=>({data:{session:{}},error:Error('bad')})},'https://mosaic-app.vercel.app/auth/confirm',storage)).status,'error','Session error explained');
+eq((await checkEmailConfirmation({...auth,getUser:async()=>({data:{user:{email_confirmed_at:null}},error:null})},'https://mosaic-app.vercel.app/auth/confirm',storage)).status,'error','Unconfirmed identity refused');
+eq((await checkEmailConfirmation({...auth,getUser:async()=>({data:{user:null},error:Error('bad')})},'https://mosaic-app.vercel.app/auth/confirm',storage)).status,'error','Server identity error refused');
+eq((await checkEmailConfirmation({...auth,getSession:async()=>{throw Error('offline');}},'https://mosaic-app.vercel.app/auth/confirm',storage)).status,'error','Thrown network error recoverable');
+eq(await checkEmailConfirmation(auth,'https://mosaic-app.vercel.app/auth/confirm?next=https://other.test',storage),{status:'success',destination:'/me'},'Untrusted next destination ignored');
+rememberInvitation(storage,'a'.repeat(48));
+eq(await checkEmailConfirmation(auth,'https://mosaic-app.vercel.app/auth/confirm',storage),{status:'success',destination:'/accept-invite?token='+'a'.repeat(48)},'Confirmation resumes original invitation');
+eq(postAuthDestination(storage),'/accept-invite?token='+'a'.repeat(48),'Confirmation does not consume invitation');
+console.log(`PASS ${checks} onboarding assertions; no email or network calls`);

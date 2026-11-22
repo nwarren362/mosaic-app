@@ -35,3 +35,13 @@ Fresh live metadata preflight matched. Adopted the verified baseline without rep
 Reference: [Supabase deployment and migration history](https://supabase.com/docs/guides/deployment/database-migrations).
 
 Production smoke checks after application: anonymous monitor RPC returned HTTP 200/true; authenticated Gigs All displayed ten records; administration/invitations loaded with the existing authorised support session; no warning/error browser logs captured. No invitation consumed, email sent or application record deliberately modified as a release test.
+
+## Email readiness follow-up — 22 November 2026
+
+Read-only live Auth review: custom SMTP host/port/sender are unset, no SMTP username is configured, email auto-confirmation remains enabled, Site URL is http://localhost:3000 and the redirect allow-list is empty. No settings changed and no emails sent. The earlier source-code Resend endpoint is separate from Auth delivery and still hardcodes the excluded development sender; its local key presence is not evidence of a working or authorised sender.
+
+Public DNS lookup for ontap365.com returned the IONOS UK MX servers and SPF including _spf-eu.ionos.com. This supports assessing the existing nigel@ontap365.com Mail Basic account, without proving SMTP credentials, delivery or a paid-plan entitlement. IONOS documents smtp.ionos.co.uk with SSL/TLS on 465 or STARTTLS on 587, using the full mailbox address and mailbox password. A different-domain From address cannot be assumed to work through this account.
+
+Next prerequisites: configure the selected mailbox password directly in Supabase’s secure SMTP settings (never in chat or Git), review the production/local redirect targets and complete the registration/confirmation return flow before enabling mandatory confirmation. Explicit approval is still required for a controlled message test. Keep agency correspondence sender identity/provider configuration tenant-scoped and editable by its administrator; do not replace one hardcoded agency address with another. Default Auth SMTP is project-wide; agency-branded Auth delivery would require a separate routing design.
+
+Sources: [IONOS Mail Basic SMTP](https://www.ionos.co.uk/help/index.php?id=2490), [Supabase SMTP](https://supabase.com/docs/guides/auth/auth-smtp), [Supabase redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls).

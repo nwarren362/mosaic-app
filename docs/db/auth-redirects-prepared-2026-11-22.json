@@ -1,0 +1,4 @@
+{
+  "site_url": "https://mosaic-app.vercel.app",
+  "uri_allow_list": "https://mosaic-app.vercel.app/auth/confirm,http://localhost:3000/auth/confirm"
+}
