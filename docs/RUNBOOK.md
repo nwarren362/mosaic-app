@@ -61,7 +61,7 @@ Vercel:
 
 ## Signup and confirmation readiness — 22 November 2026
 
-The signup/confirmation return flow is prepared locally, not yet released. Signup requests an explicit same-origin `/auth/confirm` destination and keeps the no-session instructions visible. Login/confirmation retain a pending agency invitation until successful acceptance. Acceptance shares a single promise per token during development effect replays. Provider failures and missing/unconfirmed sessions explain recovery; raw callback tokens/details are removed from the URL. An expired-link marker remains on reload. Confirmation in a different browser/device instructs the user to reopen the original agency invitation link.
+The signup/confirmation return flow was accepted and deployed on 22 November 2026 at 286ad03. Exact production/local callback redirects were applied and verified; SMTP remains unconfigured and automatic email confirmation remains unchanged. See `docs/db/audit/auth-redirects-release-2026-11-22.json`. Signup requests an explicit same-origin `/auth/confirm` destination and keeps the no-session instructions visible. Login/confirmation retain a pending agency invitation until successful acceptance. Acceptance shares a single promise per token during development effect replays. Provider failures and missing/unconfirmed sessions explain recovery; raw callback tokens/details are removed from the URL. An expired-link marker remains on reload. Confirmation in a different browser/device instructs the user to reopen the original agency invitation link.
 
 The existing Supabase browser client uses implicit flow. This work does not introduce server cookies, PKCE, password-reset screens, automatic invitation emailing or agency SMTP configuration. The project-level Auth sender is separate from future tenant-scoped agency sender settings.
 
@@ -79,7 +79,7 @@ Verification: 28 automated assertions (`node scripts/auth/test-onboarding.mjs`);
 
 Release prerequisites, in order:
 
-1. Accept/publish the tested app return route. Apply only the reviewed `docs/db/auth-redirects-prepared-2026-11-22.json` settings after release authorisation: production Site URL and exact production/local confirmation destinations. Avoid wildcard production redirects. Neither SMTP nor automatic-confirmation settings are changed by this file.
+1. Completed on 22 November: published the tested return route and applied only the reviewed `docs/db/auth-redirects-prepared-2026-11-22.json` settings. Production signup renders and the expired-link page shows recovery guidance. No live signup or email delivery was exercised. The Site URL is the production origin and the allow-list contains exact production/local confirmation paths; neither SMTP nor automatic-confirmation settings changed.
 2. User enters the mailbox password directly into Supabase's custom SMTP settings. Candidate: sender and SMTP username `nigel@ontap365.com`, display name `Mosaic (development)`, host `smtp.ionos.co.uk`, port 587 with STARTTLS (465 SSL/TLS is also documented by IONOS). Do not put the password in chat, source files or NEXT_PUBLIC variables. IONOS requires an authorised sender/domain; Harry's address is excluded from development.
 3. Obtain explicit authorisation for one controlled delivery test to a chosen unused test account/address. A real Supabase confirmation test must then check delivery, link destination, mailbox confirmation and invitation completion before requiring email confirmation for all new signups. Existing auto-confirmed accounts are not retroactively proof of mailbox ownership.
 

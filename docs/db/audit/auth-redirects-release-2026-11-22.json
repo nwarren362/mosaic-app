@@ -1,0 +1,33 @@
+{
+  "released_on": "2026-11-22",
+  "project_ref": "kugoybixpgzmkytijeld",
+  "before": {
+    "site_url": "http://localhost:3000",
+    "uri_allow_list": "",
+    "mailer_autoconfirm": true,
+    "external_email_enabled": true,
+    "disable_signup": false,
+    "smtp_host": null,
+    "smtp_port": null,
+    "smtp_admin_email": null,
+    "smtp_sender_name": null,
+    "smtp_username_present": false,
+    "smtp_password_returned_nonempty": false
+  },
+  "after": {
+    "site_url": "https://mosaic-app.vercel.app",
+    "uri_allow_list": "https://mosaic-app.vercel.app/auth/confirm,http://localhost:3000/auth/confirm",
+    "mailer_autoconfirm": true,
+    "external_email_enabled": true,
+    "disable_signup": false,
+    "smtp_host": null,
+    "smtp_port": null,
+    "smtp_admin_email": null,
+    "smtp_sender_name": null,
+    "smtp_username_present": false,
+    "smtp_password_returned_nonempty": false
+  },
+  "callback_http_status": 200,
+  "email_sent": false,
+  "note": "Only site_url and uri_allow_list were patched. No credentials exported."
+}
