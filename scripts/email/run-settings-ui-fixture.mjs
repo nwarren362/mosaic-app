@@ -13,10 +13,14 @@ let dev,server,stopping=false;
 async function stop(){if(stopping)return;stopping=true;dev?.kill('SIGTERM');server?.close();await db.close();await rm(root,{recursive:true,force:true});}
 try{
  await db.exec(platformContract);
- for(const file of ['20261119000000_application_baseline.sql','20261119000100_application_privileges.sql','20261122000000_contact_email_delivery.sql','20261122000100_agency_email_settings.sql'])await db.exec(await readFile(resolve(repo,'supabase/migrations',file),'utf8'));
+ for(const file of ['20261119000000_application_baseline.sql','20261119000100_application_privileges.sql','20261122000000_contact_email_delivery.sql','20261122000100_agency_email_settings.sql','20261123000000_email_delivery_review.sql'])await db.exec(await readFile(resolve(repo,'supabase/migrations',file),'utf8'));
  await db.exec(`insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values('${id(1)}','admin@example.test',now(),'{}'),('${id(2)}','agent@example.test',now(),'{}'),('${id(3)}','other@example.test',now(),'{}');
  insert into public.agencies(id,name) values('${id(101)}','Sample agency A'),('${id(102)}','Other agency B');
  insert into public.agency_memberships(agency_id,user_id,role) values('${id(101)}','${id(1)}','admin'),('${id(101)}','${id(2)}','agent'),('${id(102)}','${id(3)}','admin');`);
+ await db.exec(`insert into public.venues(id,agency_id,name) values('${id(301)}','${id(101)}','Sample review venue');
+ insert into public.venue_contacts(id,agency_id,venue_id,name,email) values('${id(401)}','${id(101)}','${id(301)}','Sample contact','contact@example.test');`);
+ for(const [n,started,receipt] of [[501,false,false],[502,true,false],[503,true,true]])await db.query(`insert into public.contact_email_deliveries(id,agency_id,actor_id,venue_id,venue_contact_id,subject,text_body,bcc_myself,payload,sender_revision,smtp_connection,created_at,smtp_started_at,provider_id,accepted_at)
+ values($1,$2,$3,$4,$5,$6,'Synthetic original message',false,jsonb_build_object('from','Sample <sender@example.test>','to',jsonb_build_array('contact@example.test'),'subject',$6::text,'text','Synthetic original message'),gen_random_uuid(),jsonb_build_object('host','smtp.ionos.co.uk','port',587,'user','sender@example.test'),now()-interval '1 hour',case when $7 then now()-interval '10 minutes' else null end,case when $8 then 'saved-fixture-receipt' else null end,case when $8 then now()-interval '9 minutes' else null end)`,[id(n),id(101),id(1),id(301),id(401),n===501?'Sample unsent request':n===502?'Sample uncertain delivery':'Sample history recovery',started,receipt]);
  for(const name of ['src','public','tsconfig.json','package.json'])await cp(resolve(repo,name),resolve(root,name),{recursive:true});
  await symlink(resolve(repo,'node_modules'),resolve(root,'node_modules'));
  await writeFile(resolve(root,'next.config.ts'),'export default {reactCompiler:true};');
@@ -35,6 +39,7 @@ try{
    if(url.pathname==='/fixture-state'){json({mode,verifyCalls,smtpSendCalls:0});return;}
    if(url.pathname==='/fixture-verify'){verifyCalls++;json({synthetic:true},mode==='pass'?200:400);return;}
    if(url.pathname.startsWith('/fixture-mode/') && req.method==='POST'){mode=url.pathname.split('/').at(-1);await serial(()=>db.exec("update public.agency_email_senders set last_test_attempt_at=null"));json({mode});return;}
+   if(!['sb_publishable_fixture_key','sb_secret_fixture_key'].includes(req.headers.apikey)){json({code:'42501'},401);return;}
    const chunks=[];for await(const c of req)chunks.push(c);const body=chunks.length?JSON.parse(Buffer.concat(chunks)):{};
    let n=1;try{const p=JSON.parse(Buffer.from((req.headers.authorization??'').split('.')[1],'base64url'));n=Number(p.sub.slice(-12));}catch{}
    if(url.pathname.startsWith('/auth/v1/token')){n=body.email==='agent@example.test'?2:1;json({access_token:jwt(n),refresh_token:`fake-${n}`,expires_in:3600,token_type:'bearer',user:user(n)});return;}
@@ -47,17 +52,17 @@ try{
    }
    if(url.pathname==='/rest/v1/agencies'){const agency={id:id(101),name:'Sample agency A',theme_preset:'obsidian',logo_url:null};json(req.headers.accept?.includes('vnd.pgrst.object')?agency:[agency]);return;}
    if(url.pathname.startsWith('/rest/v1/rpc/')){
-    if(req.headers.authorization!=='Bearer synthetic-service-key'){json({code:'42501'},403);return;}
+    if(req.headers.apikey!=='sb_secret_fixture_key'){json({code:'42501'},403);return;}
     const name=url.pathname.split('/').at(-1);
-    const params={read_agency_email_settings:['p_actor','p_agency'],save_agency_email_settings:['p_actor','p_agency','p_revision','p_name','p_email','p_port','p_encrypted'],change_agency_email_settings:['p_actor','p_agency','p_revision','p_action','p_test','p_authorised']}[name];
+    const params={read_agency_email_settings:['p_actor','p_agency'],save_agency_email_settings:['p_actor','p_agency','p_revision','p_name','p_email','p_port','p_encrypted'],change_agency_email_settings:['p_actor','p_agency','p_revision','p_action','p_test','p_authorised'],list_contact_email_reviews:['p_actor','p_agency'],resolve_contact_email_review:['p_actor','p_agency','p_id','p_review','p_outcome','p_evidence','p_accepted_at']}[name];
     if(!params){json({code:'42501'},403);return;}
     const {rows}=await serial(()=>db.query(`select public.${name}(${params.map((_,i)=>'$'+(i+1)).join(',')}) d`,params.map(k=>body[k]??(k==='p_authorised'?false:null))));json(rows[0].d);return;
    }
    json([]);
-  }catch(error){const message=String(error.message);const code=/Agency admin/.test(message)?'42501':/changed|reload/.test(message)?'40001':/Wait one minute/.test(message)?'54000':/Check the connection/.test(message)?'55000':'22023';json({code,message:'Synthetic settings request rejected'},400);}
+  }catch(error){const message=String(error.message);const code=/Agency admin/.test(message)?'42501':/changed|reload/.test(message)?'40001':/Wait one minute/.test(message)?'54000':/Check the connection|in progress/.test(message)?'55000':'22023';json({code,message:'Synthetic settings request rejected'},400);}
  });
  await new Promise(r=>server.listen(55493,'127.0.0.1',r));
- dev=spawn(process.execPath,[resolve(repo,'node_modules/next/dist/bin/next'),'dev',root,'--webpack','--port','3001','--hostname','127.0.0.1'],{stdio:'inherit',env:{...process.env,NEXT_PUBLIC_SUPABASE_URL:'http://127.0.0.1:55493',NEXT_PUBLIC_SUPABASE_ANON_KEY:'synthetic-anon-key',SUPABASE_SERVICE_ROLE_KEY:'synthetic-service-key',EMAIL_CREDENTIAL_ENCRYPTION_KEY:randomBytes(32).toString('base64'),EMAIL_CONNECTION_CHECKS_ENABLED:'true',CONTACT_EMAIL_SENDING_ENABLED:'false',RESEND_API_KEY:''}});
+ dev=spawn(process.execPath,[resolve(repo,'node_modules/next/dist/bin/next'),'dev',root,'--webpack','--port','3001','--hostname','127.0.0.1'],{stdio:'inherit',env:{...process.env,NEXT_PUBLIC_SUPABASE_URL:'http://127.0.0.1:55493',NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:'sb_publishable_fixture_key',NEXT_PUBLIC_SUPABASE_ANON_KEY:'legacy-key-should-not-be-used',SUPABASE_SECRET_KEY:'sb_secret_fixture_key',SUPABASE_SERVICE_ROLE_KEY:'legacy-key-should-not-be-used',EMAIL_CREDENTIAL_ENCRYPTION_KEY:randomBytes(32).toString('base64'),EMAIL_CONNECTION_CHECKS_ENABLED:'true',CONTACT_EMAIL_SENDING_ENABLED:'false',RESEND_API_KEY:''}});
  for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>{void stop();});
  dev.on('exit',()=>{void stop();});
  console.log('Synthetic admin SMTP settings: http://localhost:3001/admin/email (admin@example.test / any sample password). No real SMTP or mail. Port 3000 untouched.');

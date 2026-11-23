@@ -1,0 +1,50 @@
+{
+  "reviewed_on": "2026-11-23",
+  "read_only": true,
+  "project_ref": "kugoybixpgzmkytijeld",
+  "api_key_metadata": [
+    {
+      "id": "anon",
+      "name": "anon",
+      "type": "legacy"
+    },
+    {
+      "id": "service_role",
+      "name": "service_role",
+      "type": "legacy"
+    },
+    {
+      "id": "07434fed-c494-4979-a1c4-5ac045debbbb",
+      "name": "default",
+      "type": "publishable"
+    },
+    {
+      "id": "043f8ad7-acf2-499b-abf7-4ae6b657710e",
+      "name": "default",
+      "type": "secret"
+    }
+  ],
+  "legacy_keys_enabled": true,
+  "edge_functions": [],
+  "auth_jwt_expiry_seconds": 3600,
+  "database_inventory": [
+    {
+      "inventory": {
+        "pg_cron_present": false,
+        "pg_net_present": false,
+        "public_functions_with_literal_legacy_jwt": 0,
+        "pending_email_requests": 0,
+        "delivery_history": 0,
+        "migration_versions": [
+          "20261119000000",
+          "20261119000100",
+          "20261122000000",
+          "20261122000100"
+        ]
+      }
+    }
+  ],
+  "external_monitor_key_dependency": "Not yet verified; must inventory before retiring legacy keys",
+  "live_keys_changed": false,
+  "email_sent": false
+}

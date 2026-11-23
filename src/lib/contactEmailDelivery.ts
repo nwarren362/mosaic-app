@@ -58,6 +58,7 @@ export async function handleContactEmail(request: Request, deps: Dependencies): 
     }
     const delivery = data as { state?: string; payload?: unknown; encryptedPassword?: string; connection?: unknown; providerId?: string } | null;
     if (delivery?.state === "sent") return reply(200, { requestId: id, state: "sent" });
+    if (delivery?.state === "cancelled") return reply(409, { requestId: id, error: "This request was closed without sending. Close this composer and reopen it to start a new email if needed." });
     if (delivery?.state === "finalize") {
       const complete = await deps.rpc("complete_contact_email", { p_id: id });
       return complete.error ? uncertain(id!) : reply(200, { requestId: id, state: "sent" });

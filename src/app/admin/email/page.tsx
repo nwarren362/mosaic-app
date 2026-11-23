@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Page, Card, Field, Input, Select, Button, FormStack, ErrorNotice, Checkbox } from "@/components/ui";
+import { Page, Card, Field, Input, Select, Button, FormStack, ErrorNotice, SuccessNotice, Checkbox } from "@/components/ui";
 import { supabase } from "@/lib/supabaseClient";
 import type { AgencyEmailSettings } from "@/lib/emailSettingsTypes";
+import EmailDeliveryReview from "./EmailDeliveryReview";
 
 type Agency = { id: string; name: string };
 
@@ -13,6 +14,7 @@ export default function AgencyEmailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -38,11 +40,12 @@ export default function AgencyEmailPage() {
       {loading ? <p role="status">Checking administrator access…</p> : error ? <ErrorNotice>{error}</ErrorNotice> : !agencies.length ?
         <ErrorNotice>Agency admin required. You can manage email settings only for agencies where you are an administrator.</ErrorNotice> : <>
           <Field label="Agency" htmlFor="email-agency">
-            <Select id="email-agency" value={agencyId} disabled={busy} onChange={event => setAgencyId(event.target.value)}>
+            <Select id="email-agency" value={agencyId} disabled={busy || reviewBusy} onChange={event => setAgencyId(event.target.value)}>
               {agencies.map(agency => <option key={agency.id} value={agency.id}>{agency.name}</option>)}
             </Select>
           </Field>
           <AgencyEmailForm key={agencyId} agencyId={agencyId} onBusyChange={setBusy} />
+          <EmailDeliveryReview key={`review-${agencyId}`} agencyId={agencyId} onBusyChange={setReviewBusy} />
         </>}
     </Card>
   </Page>;
@@ -72,9 +75,16 @@ function AgencyEmailForm({ agencyId, onBusyChange }: { agencyId: string; onBusyC
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const inFlight = useRef(false);
+  const feedbackRef = useRef<HTMLDivElement>(null);
   const [reloadNeeded, setReloadNeeded] = useState(false);
   const dirty = Boolean(settings && (fromName.trim() !== settings.fromName || fromEmail.trim().toLowerCase() !== settings.fromEmail || port !== settings.smtpPort || password));
   const busy = loading || Boolean(action);
+  useEffect(() => {
+    if (!action && (error || message)) {
+      feedbackRef.current?.focus({ preventScroll: true });
+      feedbackRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [action, error, message]);
   function accept(value: AgencyEmailSettings) {
     setSettings(value); setFromName(value.fromName); setFromEmail(value.fromEmail); setPort(value.smtpPort); setPassword(""); setAuthorised(false);
   }
@@ -107,10 +117,10 @@ function AgencyEmailForm({ agencyId, onBusyChange }: { agencyId: string; onBusyC
       setReloadNeeded(true); setError("The request could not be confirmed. Reload the settings before trying again.");
     } finally { setPassword(""); inFlight.current = false; setAction(null); onBusyChange(false); }
   }
-  return <FormStack onSubmit={event => { event.preventDefault(); void perform("save"); }} autoComplete="off">
+  const feedback = error ? <ErrorNotice ref={feedbackRef}>{error}</ErrorNotice> : message ? <SuccessNotice ref={feedbackRef}>{message}</SuccessNotice> : null;
+  return <FormStack onSubmit={event => { event.preventDefault(); void perform("save"); }} autoComplete="off" aria-busy={Boolean(action)}>
     {loading ? <p role="status">Loading email settings…</p> : null}
-    {error ? <ErrorNotice>{error}</ErrorNotice> : null}
-    {message ? <p role="status">{message}</p> : null}
+    {!settings ? feedback : null}
     {settings ? <>
       <p role="status">{settings.enabled ? "Agency sender enabled." : "Agency sending paused."} {settings.verifiedAt ? "Saved connection has passed its check." : "Connection has not been checked."}</p>
       {!settings.platformSendingEnabled ? <p>Contact email delivery is currently paused by Mosaic. You can prepare your agency settings without sending email.</p> : null}
@@ -139,6 +149,8 @@ function AgencyEmailForm({ agencyId, onBusyChange }: { agencyId: string; onBusyC
       <Button type="button" variant="secondary" onClick={() => void perform("check")} disabled={busy || reloadNeeded || dirty || !settings.revision || !settings.connectionChecksEnabled}>
         {action === "check" ? "Checking connection…" : "Check connection (no email)"}
       </Button>
+      {feedback}
+      {settings.verifiedAt ? <p>Last successful connection check: {new Date(settings.verifiedAt).toLocaleString()}. No email was sent by this check.</p> : null}
       <p>The connection check pauses sending and tests the saved mailbox login. It does not prove inbox delivery or send an email.</p>
       {!settings.connectionChecksEnabled ? <p>Connection checks are paused until server setup is complete.</p> : null}
       {!settings.enabled ? <>

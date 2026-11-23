@@ -27,7 +27,7 @@ eq((await run({...body,textBody:'a'.repeat(20001)})).status,400,'Message length 
 eq((await run({...body,bccMyself:'true'})).status,400,'Boolean required');
 eq(sends.length,0,'Rejected requests never send');
 for(const [code,status] of [['42501',403],['22023',400],['55000',503],['54000',429]]){prepareError={code,message:'private database detail'};const r=await run();eq(r.status,status,'Safe DB error mapping');eq(JSON.stringify(r).includes('private database detail'),false,'Raw DB detail hidden');}prepareError=null;
-for(const [state,status] of [['sent',200],['busy',409],['review',409]]){prepared={...prepared,state};eq((await run()).status,status,`${state} result`);}eq(sends.length,0,'No send for completed/in-progress/expired attempts');prepared={...prepared,state:'ready'};
+for(const [state,status] of [['sent',200],['cancelled',409],['busy',409],['review',409]]){prepared={...prepared,state};eq((await run()).status,status,`${state} result`);}eq(sends.length,0,'No send for completed/in-progress/expired attempts');prepared={...prepared,state:'ready'};
 eq((await run(body,{credential:()=>undefined})).status,503,'Missing credential blocks send');eq(sends.length,0,'No fallback key');
 eq((await run()).state,'sent','Success confirmed after finalization');eq(sends.length,1,'One provider call');eq(sends[0].payload,prepared.payload,'Only reserved DB payload sent');eq(sends[0].id,body.requestId,'Stable provider idempotency identity');eq(calls.at(-1).name,'complete_contact_email','History persisted server side');eq(calls.find(c=>c.name==='prepare_contact_email').args.p_actor,id(1),'Actor derived from verified login');
 completeError={code:'XX000'};eq((await run()).status,503,'History failure not reported as success');completeError=null;
