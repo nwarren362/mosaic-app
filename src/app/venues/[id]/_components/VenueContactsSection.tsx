@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { Menu, Plus, Star, UserRound, X } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import {
+  ErrorNotice,
   SectionCard,
   Field,
   Input,
@@ -34,6 +35,11 @@ export default function VenueContactsSection({
 
   const [emailingContact, setEmailingContact] = useState<VenueContact | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [loadingEmail, setLoadingEmail] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [deliveryId, setDeliveryId] = useState<string | null>(null);
+  const sendInFlight = useRef(false);
+  const composerGeneration = useRef(0);
   const [emailSubject, setEmailSubject] = useState("");
   const [emailMessage, setEmailMessage] = useState("");
   const [bccMyself, setBccMyself] = useState(true);
@@ -77,8 +83,8 @@ export default function VenueContactsSection({
       !!emailingContact?.email &&
       emailSubject.trim().length > 0 &&
       emailMessage.trim().length > 0 &&
-      !sendingEmail,
-    [emailingContact, emailSubject, emailMessage, sendingEmail]
+      !sendingEmail && !loadingEmail,
+    [emailingContact, emailSubject, emailMessage, sendingEmail, loadingEmail]
   );
 
   function getContactValidationError(email: string, phone: string) {
@@ -175,19 +181,52 @@ export default function VenueContactsSection({
     setEditIsPrimary(false);
   }
 
-  function openEmailComposer(contact: VenueContact) {
+  async function openEmailComposer(contact: VenueContact) {
+    const generation = ++composerGeneration.current;
     setOpenContactMenuId(null);
     setEmailingContact(contact);
     setEmailSubject("");
     setEmailMessage("");
     setBccMyself(true);
+    setDeliveryId(null);
+    setEmailError(null);
+    setLoadingEmail(true);
+    try {
+      // Resume the original saved payload after reload, rather than create a duplicate.
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Please sign in again.");
+      const { data, error } = await supabase.from("contact_email_deliveries")
+        .select("id,subject,text_body,bcc_myself")
+        .eq("agency_id", venue.agency_id).eq("venue_contact_id", contact.id)
+        .eq("actor_id", user.id).eq("state", "pending")
+        .order("created_at", { ascending: false }).limit(1);
+      if (generation !== composerGeneration.current) return;
+      if (error) throw new Error("Email delivery records are unavailable. Sending is blocked until the connection is restored.");
+      if (data?.[0]) {
+        setDeliveryId(data[0].id);
+        setEmailSubject(data[0].subject);
+        setEmailMessage(data[0].text_body);
+        setBccMyself(data[0].bcc_myself);
+        setEmailError("An earlier email request needs confirmation. Check this saved request; its original recipient and message will be used.");
+      }
+      setLoadingEmail(false);
+    } catch (error) {
+      if (generation !== composerGeneration.current) return;
+      setEmailError(error instanceof Error ? error.message : "Unable to load email delivery records.");
+      // Keep sending disabled if pending requests cannot be checked safely.
+    }
   }
 
   function closeEmailComposer() {
+    if (sendInFlight.current) return;
+    composerGeneration.current++;
     setEmailingContact(null);
     setEmailSubject("");
     setEmailMessage("");
     setBccMyself(true);
+    setDeliveryId(null);
+    setEmailError(null);
+    setLoadingEmail(false);
   }
 
   async function getCurrentUserId() {
@@ -447,90 +486,43 @@ export default function VenueContactsSection({
   }
 
   async function handleSendEmail() {
-    if (!emailingContact?.email) return;
-
+    if (!emailingContact?.email || sendInFlight.current || loadingEmail) return;
+    sendInFlight.current = true;
     setSendingEmail(true);
-
+    setEmailError(null);
+    const requestId = deliveryId ?? crypto.randomUUID();
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        alert("You must be signed in to send email.");
-        setSendingEmail(false);
+        setEmailError("Please sign in again to send email.");
         return;
       }
-
+      // Freeze the original message even when a response is lost.
+      setDeliveryId(requestId);
       const response = await fetch("/api/contact-emails/send", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          toEmail: emailingContact.email,
-          subject: emailSubject.trim(),
-          textBody: emailMessage.trim(),
-          bccMyself,
-        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ agencyId: venue.agency_id, contactId: emailingContact.id,
+          requestId, subject: emailSubject.trim(), textBody: emailMessage.trim(), bccMyself }),
+        signal: AbortSignal.timeout(25_000),
       });
-
       const result = await response.json();
-
-      if (!response.ok) {
-        alert(result?.error || "Failed to send email.");
-        setSendingEmail(false);
+      if (!response.ok || result?.state !== "sent") {
+        setEmailError(result?.error || "Delivery is not confirmed. Check this same request.");
+        if (!result?.requestId && !deliveryId) setDeliveryId(null);
         return;
       }
-
-      const userId = await getCurrentUserId();
-
-      const { error: insertError } = await supabase.from("contact_emails").insert({
-        agency_id: venue.agency_id,
-        venue_id: venue.id,
-        venue_contact_id: emailingContact.id,
-        actor_id: userId,
-        direction: "outbound",
-        subject: emailSubject.trim(),
-        text_body: emailMessage.trim(),
-        html_body: null,
-        resend_email_id: result.resendEmailId,
-        thread_key: `venue-contact-${emailingContact.id}`,
-        status: "sent",
-        sent_at: new Date().toISOString(),
-        from_name: result.fromName,
-        from_email: result.fromEmail,
-        to_email: result.toEmail,
-        bcc_email: result.bccEmail,
-      });
-
-      if (insertError) {
-        alert(insertError.message);
-        setSendingEmail(false);
-        return;
-      }
-
-      await logVenueActivity({
-        venue,
-        activityType: "email_sent",
-        summary: `Sent email to ${emailingContact.name}${emailingContact.email ? ` (${emailingContact.email})` : ""}.`,
-        metadata: {
-          contact_id: emailingContact.id,
-          subject: emailSubject.trim(),
-          resend_email_id: result.resendEmailId,
-        },
-      });
-
-      window.dispatchEvent(
-        new CustomEvent("activity-log-changed", {
-          detail: { entityType: "venue", entityId: venue.id },
-        })
-      );
-
+      window.dispatchEvent(new CustomEvent("activity-log-changed", {
+        detail: { entityType: "venue", entityId: venue.id },
+      }));
+      // Delivery and history are already committed on the server.
+      sendInFlight.current = false;
       closeEmailComposer();
-      alert("Email sent.");
+      alert("Email accepted by the sending provider.");
+    } catch {
+      setEmailError("Delivery is not confirmed. Check this same request; do not create a replacement email.");
     } finally {
+      sendInFlight.current = false;
       setSendingEmail(false);
     }
   }
@@ -737,8 +729,12 @@ export default function VenueContactsSection({
               </button>
             </div>
 
+            {emailError ? <ErrorNotice>{emailError}</ErrorNotice> : null}
+
             <Field label="Subject" required>
               <Input
+                disabled={sendingEmail || !!deliveryId || loadingEmail}
+                maxLength={200}
                 value={emailSubject}
                 onChange={(e) => setEmailSubject(e.target.value)}
                 placeholder="Subject"
@@ -747,6 +743,8 @@ export default function VenueContactsSection({
 
             <Field label="Message" required>
               <Textarea
+                disabled={sendingEmail || !!deliveryId || loadingEmail}
+                maxLength={20000}
                 value={emailMessage}
                 onChange={(e) => setEmailMessage(e.target.value)}
                 placeholder="Write your email..."
@@ -757,6 +755,7 @@ export default function VenueContactsSection({
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
               <input
                 type="checkbox"
+                disabled={sendingEmail || !!deliveryId || loadingEmail}
                 checked={bccMyself}
                 onChange={(e) => setBccMyself(e.target.checked)}
               />
@@ -765,10 +764,10 @@ export default function VenueContactsSection({
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <Button onClick={handleSendEmail} disabled={!canSendEmail}>
-                {sendingEmail ? "Sending…" : "Send email"}
+                {sendingEmail ? "Sending…" : deliveryId ? "Check saved request" : "Send email"}
               </Button>
 
-              <Button variant="secondary" onClick={closeEmailComposer}>
+              <Button variant="secondary" onClick={closeEmailComposer} disabled={sendingEmail}>
                 Cancel
               </Button>
             </div>

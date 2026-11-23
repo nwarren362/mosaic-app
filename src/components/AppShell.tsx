@@ -89,6 +89,7 @@ export default function AppShell({
     { href: "/tasks", label: "Tasks", Icon: ListTodo },
     { href: "/me", label: "Me", Icon: FileText },
     ...(canManageInvitations ? [{ href: "/admin/invitations", label: "Invitations", Icon: Mail }] : []),
+    ...(canManageInvitations ? [{ href: "/admin/email", label: "Email settings", Icon: Mail }] : []),
   ];
 
   const admin: NavItem[] = [

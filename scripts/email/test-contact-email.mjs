@@ -1,0 +1,44 @@
+// Network-free server acceptance: injected Auth/database/provider stand-ins.
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import ts from 'typescript';
+const source=await readFile(new URL('../../src/lib/contactEmailDelivery.ts',import.meta.url),'utf8');
+const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {handleContactEmail}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+let checks=0;
+const eq=(a,b,label)=>{assert.deepEqual(a,b,label);checks++;};
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const body={agencyId:id(101),contactId:id(401),requestId:id(501),subject:'Hello',textBody:'Message',bccMyself:true};
+let sends=[],calls=[],prepared={state:'ready',payload:{from:'Agency <sender@example.test>',to:['stored@example.test'],subject:'Hello',text:'Message'},encryptedPassword:'v1:synthetic-test-ciphertext'},prepareError=null,completeError=null;
+const deps={enabled:true,configured:true,authenticate:async()=>id(1),credential:()=> 'FAKE_TEST_KEY',send:async(payload,id,key)=>{sends.push({payload,id,key});return {id:'fake-receipt'};},rpc:async(name,args)=>{calls.push({name,args});return name==='prepare_contact_email'?{data:prepared,error:prepareError}:name==='start_contact_email'?{data:true,error:null}:name==='record_contact_email_receipt'?{data:null,error:null}:{data:null,error:completeError};}};
+async function run(input=body,overrides={},token='Bearer fake'){
+ const r=await handleContactEmail(new Request('http://localhost/api/contact-emails/send',{method:'POST',headers:{Authorization:token},body:typeof input==='string'?input:JSON.stringify(input)}),{...deps,...overrides});
+ eq(r.headers.get('cache-control'),'no-store','Sensitive responses not cached');return {status:r.status,...await r.json()};
+}
+eq((await run(body,{},'')).status,401,'Missing token');
+eq((await run(body,{enabled:false})).status,503,'Disabled sending');
+eq((await run(body,{configured:false})).status,503,'Missing server configuration');
+eq((await run(body,{authenticate:async()=>null})).status,401,'Invalid login');
+eq((await run('{')).status,400,'Malformed JSON');
+eq((await run({...body,toEmail:'attacker@example.test'})).status,400,'Arbitrary recipient rejected');
+eq((await run({...body,fromEmail:'attacker@example.test'})).status,400,'Arbitrary sender rejected');
+eq((await run({...body,subject:'Hello\r\nBcc: someone'})).status,400,'Header injection rejected');
+eq((await run({...body,textBody:'a'.repeat(20001)})).status,400,'Message length bounded');
+eq((await run({...body,bccMyself:'true'})).status,400,'Boolean required');
+eq(sends.length,0,'Rejected requests never send');
+for(const [code,status] of [['42501',403],['22023',400],['55000',503],['54000',429]]){prepareError={code,message:'private database detail'};const r=await run();eq(r.status,status,'Safe DB error mapping');eq(JSON.stringify(r).includes('private database detail'),false,'Raw DB detail hidden');}prepareError=null;
+for(const [state,status] of [['sent',200],['busy',409],['review',409]]){prepared={...prepared,state};eq((await run()).status,status,`${state} result`);}eq(sends.length,0,'No send for completed/in-progress/expired attempts');prepared={...prepared,state:'ready'};
+eq((await run(body,{credential:()=>undefined})).status,503,'Missing credential blocks send');eq(sends.length,0,'No fallback key');
+eq((await run()).state,'sent','Success confirmed after finalization');eq(sends.length,1,'One provider call');eq(sends[0].payload,prepared.payload,'Only reserved DB payload sent');eq(sends[0].id,body.requestId,'Stable provider idempotency identity');eq(calls.at(-1).name,'complete_contact_email','History persisted server side');eq(calls.find(c=>c.name==='prepare_contact_email').args.p_actor,id(1),'Actor derived from verified login');
+completeError={code:'XX000'};eq((await run()).status,503,'History failure not reported as success');completeError=null;
+eq((await run(body,{send:async()=>{throw Error('private network detail')}})).requestId,body.requestId,'Network failure retains retry id');
+eq((await run(body,{send:async()=>{throw Error('SMTP rejected')}})).status,503,'SMTP failure remains uncertain');
+eq((await run(body,{send:async()=>({})})).status,503,'Missing provider receipt not success');
+eq((await run(body,{send:async()=>({id:null})})).status,503,'Bad receipt remains uncertain');
+await run({agencyId:body.agencyId,contactId:body.contactId,requestId:body.requestId,retry:true});eq(calls.filter(c=>c.name==='prepare_contact_email').at(-1).args.p_subject,null,'Recovery requests use stored message');
+prepared={...prepared,state:'finalize',providerId:'saved-receipt'};const before=sends.length;eq((await run()).state,'sent','Recover history from saved receipt');eq(sends.length,before,'History recovery never sends SMTP again');
+prepared={...prepared,state:'ready'};eq((await run(body,{rpc:async(name)=>name==='prepare_contact_email'?{data:prepared,error:null}:{data:false,error:null}})).status,503,'Lost send barrier blocks SMTP');eq(sends.length,before,'No SMTP without committed barrier');
+prepared={...prepared,state:'ready'};
+let completed=false;
+eq((await run(body,{rpc:async(name)=> name==='prepare_contact_email'?{data:prepared,error:null}:name==='start_contact_email'?{data:true,error:null}:name==='record_contact_email_receipt'?{data:null,error:{code:'XX000'}}:(completed=true,{data:null,error:null})})).status,503,'Receipt persistence failure remains uncertain');eq(completed,false,'Cannot complete history without persisted receipt');
+console.log(`PASS ${checks} server email assertions; no mail sent`);

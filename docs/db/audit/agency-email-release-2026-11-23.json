@@ -1,0 +1,97 @@
+{
+  "released_on": "2026-11-23",
+  "project_ref": "kugoybixpgzmkytijeld",
+  "migrations": [
+    {
+      "file": "20261122000000_contact_email_delivery.sql",
+      "sha256": "ccea44f6f3dbb9be04914ea5b98bb250dcb6c7d7a01a264d6da9fb9b63ed2cc9"
+    },
+    {
+      "file": "20261122000100_agency_email_settings.sql",
+      "sha256": "ee9cf979946c05caa518ec1cb5f6c018c24c82bb209d1c4b2b7767187f4866ae"
+    }
+  ],
+  "email_sent": false,
+  "preflight": [
+    {
+      "preflight": {
+        "history": [
+          "20261119000000",
+          "20261119000100"
+        ],
+        "new_objects": {
+          "senders": null,
+          "deliveries": null,
+          "audit": null
+        },
+        "counts": {
+          "artists": 4,
+          "venues": 5,
+          "gigs": 12,
+          "memberships": 7,
+          "emails": 0
+        }
+      }
+    }
+  ],
+  "after": [
+    {
+      "verification": {
+        "history": [
+          {
+            "version": "20261119000000",
+            "name": "application_baseline"
+          },
+          {
+            "version": "20261119000100",
+            "name": "application_privileges"
+          },
+          {
+            "version": "20261122000000",
+            "name": "contact_email_delivery"
+          },
+          {
+            "version": "20261122000100",
+            "name": "agency_email_settings"
+          }
+        ],
+        "rls": [
+          {
+            "table": "agency_email_senders",
+            "enabled": true
+          },
+          {
+            "table": "contact_email_deliveries",
+            "enabled": true
+          },
+          {
+            "table": "agency_email_settings_audit",
+            "enabled": true
+          }
+        ],
+        "permissions": {
+          "browser_sender_read": false,
+          "browser_forge_sent": false,
+          "browser_settings_rpc": false,
+          "server_settings_rpc": true
+        },
+        "configured_senders": 0,
+        "delivery_requests": 0,
+        "counts": {
+          "artists": 4,
+          "venues": 5,
+          "gigs": 12,
+          "memberships": 7,
+          "emails": 0
+        }
+      }
+    }
+  ],
+  "applied": true,
+  "auth_after": {
+    "site_url": "https://mosaic-app.vercel.app",
+    "mailer_autoconfirm": false,
+    "smtp_host": "smtp.ionos.co.uk",
+    "smtp_admin_email": "nigel@ontap365.com"
+  }
+}

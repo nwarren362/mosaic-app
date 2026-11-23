@@ -1,0 +1,22 @@
+// Stub the transport: verify SMTP options and receipt handling without opening sockets.
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import ts from 'typescript';
+let options,message,closed=0,verifyCalls=0,receipt={accepted:['contact@example.test'],rejected:[],messageId:'<sample@example.test>'};
+globalThis.__mosaicSmtpStub={createTransport:o=>{options=o;return {sendMail:async m=>{message=m;return receipt;},verify:async()=>{verifyCalls++;},close:()=>closed++};}};
+const source=(await readFile(new URL('../../src/lib/contactEmailSmtp.ts',import.meta.url),'utf8')).replace('import nodemailer from "nodemailer";', 'const nodemailer = globalThis.__mosaicSmtpStub;');
+const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {sendContactSmtp,verifyContactSmtp}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const payload={from:'Test <sender@example.test>',to:['contact@example.test'],subject:'Test',text:'Message'};
+const connection={host:'smtp.ionos.co.uk',port:587,user:'sender@example.test'};
+let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
+eq(await sendContactSmtp(payload,'sample','FAKE_PASSWORD',connection),{id:'<sample@example.test>'});
+eq(options.requireTLS,true);eq(options.secure,false);eq(options.tls.rejectUnauthorized,true);eq(options.disableUrlAccess,true);eq(options.disableFileAccess,true);eq(options.auth,{user:'sender@example.test',pass:'FAKE_PASSWORD'});eq(message.to,payload.to);eq(message.messageId,'<sample@example.test>');eq(closed,1);
+await sendContactSmtp(payload,'sample','FAKE_PASSWORD',{...connection,port:465});eq(options.secure,true);
+await assert.rejects(()=>sendContactSmtp(payload,'sample','FAKE_PASSWORD',{...connection,host:'127.0.0.1'}));checks++;
+await assert.rejects(()=>sendContactSmtp({...payload,from:'Other <other@example.test>'},'sample','FAKE_PASSWORD',connection));checks++;
+receipt={...receipt,rejected:['copy@example.test']};await assert.rejects(()=>sendContactSmtp(payload,'sample','FAKE_PASSWORD',connection));checks++;eq(closed,3);
+await verifyContactSmtp(connection,'FAKE_PASSWORD');eq(verifyCalls,1);eq(closed,4);eq(message.messageId,'<sample@example.test>');
+await assert.rejects(()=>verifyContactSmtp({...connection,host:'127.0.0.1'},'FAKE_PASSWORD'));checks++;
+delete globalThis.__mosaicSmtpStub;
+console.log(`PASS ${checks} SMTP adapter assertions; no connections or mail`);

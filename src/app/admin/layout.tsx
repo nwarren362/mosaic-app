@@ -15,10 +15,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     async function check() {
       try {
         const access = await getAdministrationAccess();
-        const allowed = access.isSuperUser || (pathname === "/admin/invitations" && access.agencies.length > 0);
+        const agencyAdminPage = pathname === "/admin/invitations" || pathname === "/admin/email";
+        const allowed = access.isSuperUser || (agencyAdminPage && access.agencies.length > 0);
         if (active) setDecision({ path: pathname, allowed, message: !access.userId
           ? "Please sign in to use administration tools."
-          : pathname === "/admin/invitations" ? "Agency administrator access is required." : "Super-user access is required." });
+          : agencyAdminPage ? "Agency administrator access is required." : "Super-user access is required." });
       } catch {
         if (active) setDecision({ path: pathname, allowed: false, message: "Could not verify administrator access. Refresh the page to try again." });
       }

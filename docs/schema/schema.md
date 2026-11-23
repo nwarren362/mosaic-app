@@ -1,5 +1,13 @@
 # Mosaic App — Database Schema (Public)
 
+Email additions applied to the shared database on 23 November 2026: both `20261122` migrations below are recorded in migration history. The historical schema below is retained as background.
+
+- `agency_email_senders`: one row per agency; sender name/email, fixed supported SMTP host, secure port and matching username; `encrypted_password` (agency-bound AES-GCM ciphertext, never browser-readable); configuration `revision`, `enabled`, `verified_at`, last-check timestamp/token, updated timestamp/actor and sender-authorisation actor/timestamp. No plaintext credential or per-agency environment reference is stored.
+- `contact_email_deliveries`: request UUID, agency/actor/venue/contact, subject/body/BCC preference and immutable payload/connection snapshot; sender revision; pending/sent state, creation time, lease, attempt count, one-way SMTP start timestamp, provider receipt and acceptance timestamp. Composite foreign keys bind the contact and venue to the same agency. Only the initiating current agency member can read their delivery rows; writes use server-only functions.
+- `agency_email_settings_audit`: UUID, agency, actor, action, configuration revision and creation time. Actions cover save, check start/result, enable and pause. No passwords, ciphertext, tokens or message content are stored here; direct browser access is denied.
+
+See [settings setup and security](../RUNBOOK.md#agency-admin-smtp-settings-prepared-locally--23-november) and `supabase/migrations/20261122000000_contact_email_delivery.sql` / `20261122000100_agency_email_settings.sql` for exact definitions.
+
 Last updated: 2026-04-25  
 Source: information_schema.columns + FK + PK exports
 
