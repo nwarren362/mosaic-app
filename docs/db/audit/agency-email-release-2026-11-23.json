@@ -93,5 +93,32 @@
     "mailer_autoconfirm": false,
     "smtp_host": "smtp.ionos.co.uk",
     "smtp_admin_email": "nigel@ontap365.com"
+  },
+  "application_release": {
+    "commit": "344928d46019a93ad28cc75053ba12d3517a4158",
+    "deployment": "https://vercel.com/nwarren362s-projects/mosaic-app/HtnXjLEuYsjnTY7eDZkC8DAZ7EGx",
+    "ready_verified": true,
+    "http_checks": {
+      "settings_page": 200,
+      "unauthenticated_settings_api": 401,
+      "unauthenticated_contact_send": 401
+    },
+    "admin_settings_read_verified": true,
+    "admin_agency_selector": "Mosaic Music",
+    "credential_storage_ready": true,
+    "connection_checks_enabled": true,
+    "contact_delivery_enabled": false,
+    "mailbox_password_entry_pending": true
+  },
+  "production_variables": {
+    "names": [
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "EMAIL_CREDENTIAL_ENCRYPTION_KEY",
+      "EMAIL_CONNECTION_CHECKS_ENABLED",
+      "CONTACT_EMAIL_SENDING_ENABLED"
+    ],
+    "target": "Production only",
+    "storage_type": "Secret",
+    "credential_values_exported_to_record": false
   }
 }
